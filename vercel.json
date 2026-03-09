@@ -13,7 +13,7 @@
         }
     ],
     "env": {
-        "DATABASE_URL": "postgresql://postgres:Vikash%401210@db.hecytxfabgecivzgsokp.supabase.co:5432/postgres",
+        "DATABASE_URL": "postgresql://postgres:Vikash%401210@db.hecytxfabgecivzgsokp.supabase.co:5432/postgres?sslmode=require",
         "SECRET_KEY": "score-tracker-secret-key-2026"
     }
 }
