@@ -24,7 +24,7 @@ else:
 
 app.config['SQLALCHEMY_DATABASE_URI'] = f'sqlite:///{DB_PATH}'
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
-app.config['SECRET_KEY'] = 'your-secret-key'
+app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'default-secure-key')
 
 db.init_app(app)
 
