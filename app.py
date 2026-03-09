@@ -25,9 +25,13 @@ app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'score-tracker-secret-ke
 
 db.init_app(app)
 
-# ── Local User_data directory for offline copies ──────────────────────────────
-BASE_DIR = os.path.abspath(os.path.dirname(__file__))
-USER_DATA_DIR = os.path.join(BASE_DIR, 'User_data')
+# ── User_data directory for offline copies ──────────────────────────────
+if os.environ.get('RENDER') or os.environ.get('VERCEL'):
+    USER_DATA_DIR = '/tmp/User_data'
+else:
+    BASE_DIR = os.path.abspath(os.path.dirname(__file__))
+    USER_DATA_DIR = os.path.join(BASE_DIR, 'User_data')
+
 os.makedirs(USER_DATA_DIR, exist_ok=True)
 
 def login_required(f):
