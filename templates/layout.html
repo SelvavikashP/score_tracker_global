@@ -13,12 +13,14 @@
     <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     <style>
         :root {
-            --bg-body: #0a0f1c;
-            --bg-card: #161e2b;
-            --accent-primary: #8b5cf6;
-            --accent-secondary: #06b6d4;
+            --bg-body: #0f172a;
+            --bg-card: #1e293b;
+            --accent-primary: #3b82f6;
+            /* Trustworthy professional blue */
+            --accent-secondary: #94a3b8;
+            /* Muted slate for secondary text */
             --text-pure: #ffffff;
-            --text-bright: #f1f5f9;
+            --text-bright: #f8fafc;
         }
 
         body {
@@ -96,9 +98,10 @@
 
         .card {
             background-color: var(--bg-card) !important;
-            border: 2px solid rgba(255, 255, 255, 0.2) !important;
-            border-radius: 24px !important;
-            box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.7) !important;
+            border: 1px solid #334155 !important;
+            border-radius: 12px !important;
+            /* Professional, less round corners */
+            box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05) !important;
             padding: 2.5rem;
             margin-bottom: 2rem;
             overflow: visible !important;
@@ -106,13 +109,12 @@
 
         /* Form Visibility */
         .form-label {
-            color: var(--accent-secondary) !important;
-            font-weight: 900 !important;
-            text-transform: uppercase;
-            font-size: 1rem !important;
-            letter-spacing: 1.5px;
-            margin-bottom: 0.8rem !important;
-            background: none !important;
+            color: var(--text-bright) !important;
+            /* Simple white instead of secondary color */
+            font-weight: 600 !important;
+            font-size: 0.95rem !important;
+            margin-bottom: 0.5rem !important;
+            display: block;
         }
 
         .form-control {
@@ -131,22 +133,22 @@
         }
 
         .btn-primary {
-            background: #8b5cf6 !important;
-            border: 2px solid #ffffff !important;
-            /* White border for high contrast */
+            background: var(--accent-primary) !important;
+            border: 2px solid transparent !important;
             padding: 1rem 2.5rem !important;
-            border-radius: 16px !important;
-            font-weight: 900 !important;
-            font-size: 1.3rem !important;
+            border-radius: 8px !important;
+            /* Squarer, more professional corners */
+            font-weight: 700 !important;
+            font-size: 1.1rem !important;
             color: #ffffff !important;
-            text-transform: uppercase;
-            letter-spacing: 1px;
-            box-shadow: 0 10px 20px rgba(0, 0, 0, 0.4) !important;
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06) !important;
+            transition: all 0.2s ease;
         }
 
         .btn-primary:hover {
-            background: #7c3aed !important;
-            transform: scale(1.02);
+            background: #2563eb !important;
+            /* Darker blue on hover */
+            transform: translateY(-1px);
         }
 
         /* Table Visibility */
