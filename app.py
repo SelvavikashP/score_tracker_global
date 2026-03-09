@@ -7,8 +7,6 @@ import os
 from datetime import datetime
 from functools import wraps
 from werkzeug.security import generate_password_hash, check_password_hash
-from authlib.integrations.flask_client import OAuth
-from functools import wraps
 
 app = Flask(__name__)
 
