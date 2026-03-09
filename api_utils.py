@@ -166,101 +166,78 @@ def fetch_leetcode_data(handle):
 def fetch_codechef_data(handle):
     """
     Fetches CodeChef data using a more reliable unofficial API wrapper.
-    Falls back to improved scraping if necessary.
+    Then scrapes the profile to fill in missing contest/solved data.
     """
-    # Try the unofficial API first
+    result = {
+        "rating": 0, "rank": "Unrated", "global_rank": 0,
+        "country_rank": 0, "recent_problems": 0, "total_contests": 0
+    }
+    
+    # Try the unofficial API first for reliable rating/ranks
     api_url = f"https://codechef-api.vercel.app/{handle}"
     try:
         response = requests.get(api_url, headers=DEFAULT_HEADERS, timeout=10)
         if response.status_code == 200:
             data = response.json()
             if data.get("status") == "success":
-                return {
-                    "rating": data.get("currentRating", 0),
-                    "rank": data.get("stars", "Unrated"),
-                    "global_rank": data.get("globalRank", 0),
-                    "country_rank": data.get("countryRank", 0),
-                    "recent_problems": 0,
-                    "total_contests": 0 # This API doesn't provide it
-                }
+                result["rating"] = data.get("currentRating", 0)
+                result["rank"] = data.get("stars", "Unrated")
+                result["global_rank"] = data.get("globalRank", 0)
+                result["country_rank"] = data.get("countryRank", 0)
     except: pass
 
-    # Fallback to enhanced scraping
+    # Scrape to get actual contests and solved problems (API doesn't have it)
     url = f"https://www.codechef.com/users/{handle}"
     try:
         response = requests.get(url, headers=DEFAULT_HEADERS, timeout=15)
-        if response.status_code != 200:
-            return None
+        if response.status_code == 200 and "This user is blocked" not in response.text:
+            soup = BeautifulSoup(response.text, 'html.parser')
             
-        if "This user is blocked" in response.text:
-            return {
-                "rating": 0, "rank": "Blocked", "global_rank": 0,
-                "country_rank": 0, "recent_problems": 0, "total_contests": 0
-            }
-
-        soup = BeautifulSoup(response.text, 'html.parser')
-        
-        # Rating
-        rating_div = soup.find('div', class_='rating-number')
-        rating = int(rating_div.text) if rating_div else 0
-        
-        # Stars
-        stars_span = soup.find('span', class_='rating') or soup.find('div', class_='rating-star') or soup.find('span', class_='rating-star')
-        stars = stars_span.text.strip() if stars_span else "Unrated"
-        
-        # Ranks
-        global_rank = 0
-        country_rank = 0
-        rank_list = soup.find('div', class_='rating-ranks')
-        if rank_list:
-            ranks = rank_list.find_all('strong')
-            if len(ranks) >= 2:
-                # Some profiles have a more structured list, we'll try to be careful
-                global_rank = int(ranks[0].text) if ranks[0].text.isdigit() else 0
-                country_rank = int(ranks[1].text) if ranks[1].text.isdigit() else 0
+            # Fallback for ratings/ranks if API failed
+            if result["rating"] == 0:
+                rating_div = soup.find('div', class_='rating-number')
+                result["rating"] = int(rating_div.text) if rating_div else 0
                 
-        # Total contests - more reliable search in text
-        total_contests = 0
-        participated_match = re.search(r'No\. of Contests Participated:\s*(\d+)', response.text)
-        if participated_match:
-            total_contests = int(participated_match.group(1))
-        else:
-            # Fallback
-            contest_matches = re.findall(r'(\d+)\s+Contests', response.text)
-            if contest_matches:
-                total_contests = int(contest_matches[0])
-            
-        # Total solved problems
-        recent_problems = 0
-        # Check for "Total Problems Solved" heading
-        solved_heading = soup.find(lambda tag: tag.name == "h3" and "Total Problems Solved" in tag.text)
-        if solved_heading:
-            count_match = re.search(r'(\d+)', solved_heading.text)
-            if count_match:
-                recent_problems = int(count_match.group(1))
-        
-        if recent_problems == 0:
-            # Fallback: old section based method
-            solved_section = soup.find('section', class_='problems-solved')
-            if solved_section:
-                try:
-                    h3_text = solved_section.find('h3').text
-                    count_match = re.search(r'\((\d+)\)', h3_text)
-                    if count_match:
-                        recent_problems = int(count_match.group(1))
-                except: pass
+                stars_span = soup.find('span', class_='rating') or soup.find('div', class_='rating-star') or soup.find('span', class_='rating-star')
+                result["rank"] = stars_span.text.strip() if stars_span else "Unrated"
+                
+                rank_list = soup.find('div', class_='rating-ranks')
+                if rank_list:
+                    ranks = rank_list.find_all('strong')
+                    if len(ranks) >= 2:
+                        result["global_rank"] = int(ranks[0].text) if ranks[0].text.isdigit() else 0
+                        result["country_rank"] = int(ranks[1].text) if ranks[1].text.isdigit() else 0
 
-        return {
-            "rating": rating,
-            "rank": stars,
-            "global_rank": global_rank,
-            "country_rank": country_rank,
-            "recent_problems": recent_problems,
-            "total_contests": total_contests
-        }
+            # Total contests
+            participated_match = re.search(r'No\. of Contests Participated.*?(\d+)', response.text)
+            if participated_match:
+                result["total_contests"] = int(participated_match.group(1))
+            else:
+                contest_matches = re.findall(r'(\d+)\s+Contests', response.text)
+                if contest_matches:
+                    result["total_contests"] = int(contest_matches[0])
+                
+            # Total solved problems
+            solved_heading = soup.find(lambda tag: tag.name == "h3" and "Total Problems Solved" in tag.text)
+            if solved_heading:
+                count_match = re.search(r'(\d+)', solved_heading.text)
+                if count_match:
+                    result["recent_problems"] = int(count_match.group(1))
+            
+            if result["recent_problems"] == 0:
+                solved_section = soup.find('section', class_='problems-solved')
+                if solved_section:
+                    try:
+                        h3_text = solved_section.find('h3').text
+                        count_match = re.search(r'\((\d+)\)', h3_text)
+                        if count_match:
+                            result["recent_problems"] = int(count_match.group(1))
+                    except: pass
+                    
     except Exception as e:
-        print(f"Error fetching CodeChef data for {handle}: {e}")
-    return None
+        print(f"Error scraping CodeChef data for {handle}: {e}")
+        
+    return result
 
 def fetch_hackerrank_data(handle):
     """
