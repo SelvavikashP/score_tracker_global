@@ -7,40 +7,37 @@
             <div class="card-body p-5">
                 <div class="text-center mb-5">
                     <div class="d-inline-flex align-items-center justify-content-center mb-4"
-                        style="width: 64px; height: 64px; background: rgba(139, 92, 246, 0.1); border-radius: 16px;">
-                        <i class="fas fa-lock-open fa-2x" style="color: var(--accent-primary);"></i>
+                        style="width: 80px; height: 80px; background: rgba(139, 92, 246, 0.2); border-radius: 20px; border: 2px solid var(--accent-primary);">
+                        <i class="fas fa-lock-open fa-3x" style="color: #ffffff !important;"></i>
                     </div>
-                    <h2 class="fw-bold mb-2">Welcome</h2>
-                    <p class="text-muted">Sign in to sync your global performance.</p>
+                    <h1 class="fw-black mb-2" style="font-size: 2.5rem !important;">Welcome</h1>
+                    <p class="fw-bold fs-5" style="color: #ffffff !important;">Sign in to sync your global performance.
+                    </p>
                 </div>
 
                 <form method="POST" action="{{ url_for('login') }}">
                     <div class="mb-4">
-                        <label for="email" class="form-label small text-uppercase fw-bold"
-                            style="letter-spacing: 1px; color: var(--accent-secondary);">Email Address</label>
-                        <input type="email" class="form-control form-control-lg" id="email" name="email"
-                            placeholder="name@example.com"
-                            style="background: rgba(255,255,255,0.08); border: 1px solid var(--glass-border); color: #fff; border-radius: 12px; font-size: 1rem;"
+                        <label for="email" class="form-label" style="font-size: 1.1rem !important;">Email
+                            Address</label>
+                        <input type="email" class="form-control" id="email" name="email" placeholder="name@example.com"
                             required>
                     </div>
 
                     <div class="mb-5">
-                        <label for="password" class="form-label small text-uppercase fw-bold"
-                            style="letter-spacing: 1px; color: var(--accent-secondary);">Password</label>
-                        <input type="password" class="form-control form-control-lg" id="password" name="password"
-                            placeholder="••••••••"
-                            style="background: rgba(255,255,255,0.08); border: 1px solid var(--glass-border); color: #fff; border-radius: 12px; font-size: 1rem;"
+                        <label for="password" class="form-label" style="font-size: 1.1rem !important;">Password</label>
+                        <input type="password" class="form-control" id="password" name="password" placeholder="••••••••"
                             required>
                     </div>
 
-                    <button type="submit" class="btn btn-primary btn-lg w-100 mb-4">
-                        Continue
+                    <button type="submit" class="btn btn-primary btn-lg w-100 mb-4 py-3">
+                        Continue to Tracker
                     </button>
                 </form>
 
-                <div class="text-center pt-3 border-top" style="border-color: rgba(255,255,255,0.05) !important;">
-                    <p class="text-muted mb-0">No account yet? <a href="{{ url_for('signup') }}"
-                            class="fw-bold text-decoration-none" style="color: var(--accent-secondary);">Join the
+                <div class="text-center pt-4 border-top" style="border-color: rgba(255,255,255,0.2) !important;">
+                    <p class="fw-bold fs-5 mb-0">No account yet? <a href="{{ url_for('signup') }}"
+                            class="fw-black text-decoration-underline"
+                            style="color: var(--accent-secondary) !important;">Join the
                             Leaderboard</a></p>
                 </div>
             </div>

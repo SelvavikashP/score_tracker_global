@@ -7,49 +7,43 @@
             <div class="card-body p-5">
                 <div class="text-center mb-5">
                     <div class="d-inline-flex align-items-center justify-content-center mb-4"
-                        style="width: 64px; height: 64px; background: rgba(6, 182, 212, 0.1); border-radius: 16px;">
-                        <i class="fas fa-user-plus fa-2x" style="color: var(--accent-secondary);"></i>
+                        style="width: 80px; height: 80px; background: rgba(6, 182, 212, 0.2); border-radius: 20px; border: 2px solid var(--accent-secondary);">
+                        <i class="fas fa-user-plus fa-3x" style="color: #ffffff !important;"></i>
                     </div>
-                    <h2 class="fw-bold mb-2">Create Account</h2>
-                    <p class="text-muted">Join the community of top-tier coders.</p>
+                    <h1 class="fw-black mb-2" style="font-size: 2.5rem !important;">Create Account</h1>
+                    <p class="fw-bold fs-5" style="color: #ffffff !important;">Join the global elite coding community.
+                    </p>
                 </div>
 
                 <form method="POST" action="{{ url_for('signup') }}">
                     <div class="mb-3">
-                        <label for="username" class="form-label small text-uppercase fw-bold"
-                            style="letter-spacing: 1px; color: var(--accent-secondary);">Username</label>
-                        <input type="text" class="form-control form-control-lg" id="username" name="username"
-                            placeholder="coder_pro"
-                            style="background: rgba(255,255,255,0.08); border: 1px solid var(--glass-border); color: #fff; border-radius: 12px; font-size: 1rem;"
+                        <label for="username" class="form-label" style="font-size: 1.1rem !important;">Username</label>
+                        <input type="text" class="form-control" id="username" name="username" placeholder="coder_pro"
                             required>
                     </div>
 
                     <div class="mb-3">
-                        <label for="email" class="form-label small text-uppercase fw-bold"
-                            style="letter-spacing: 1px; color: var(--accent-secondary);">Email Address</label>
-                        <input type="email" class="form-control form-control-lg" id="email" name="email"
-                            placeholder="pro@domain.com"
-                            style="background: rgba(255,255,255,0.08); border: 1px solid var(--glass-border); color: #fff; border-radius: 12px; font-size: 1rem;"
+                        <label for="email" class="form-label" style="font-size: 1.1rem !important;">Email
+                            Address</label>
+                        <input type="email" class="form-control" id="email" name="email" placeholder="pro@domain.com"
                             required>
                     </div>
 
                     <div class="mb-5">
-                        <label for="password" class="form-label small text-uppercase fw-bold"
-                            style="letter-spacing: 1px; color: var(--accent-secondary);">Password</label>
-                        <input type="password" class="form-control form-control-lg" id="password" name="password"
-                            placeholder="••••••••"
-                            style="background: rgba(255,255,255,0.08); border: 1px solid var(--glass-border); color: #fff; border-radius: 12px; font-size: 1rem;"
+                        <label for="password" class="form-label" style="font-size: 1.1rem !important;">Password</label>
+                        <input type="password" class="form-control" id="password" name="password" placeholder="••••••••"
                             required>
                     </div>
 
-                    <button type="submit" class="btn btn-primary btn-lg w-100 mb-4">
-                        Get Started
+                    <button type="submit" class="btn btn-primary btn-lg w-100 mb-4 py-3">
+                        Start Your Journey
                     </button>
                 </form>
 
-                <div class="text-center pt-3 border-top" style="border-color: rgba(255,255,255,0.05) !important;">
-                    <p class="text-muted mb-0">Already a member? <a href="{{ url_for('login') }}"
-                            class="fw-bold text-decoration-none" style="color: var(--accent-primary);">Sign In</a></p>
+                <div class="text-center pt-4 border-top" style="border-color: rgba(255,255,255,0.2) !important;">
+                    <p class="fw-bold fs-5 mb-0">Already a member? <a href="{{ url_for('login') }}"
+                            class="fw-black text-decoration-underline"
+                            style="color: var(--accent-primary) !important;">Sign In Now</a></p>
                 </div>
             </div>
         </div>

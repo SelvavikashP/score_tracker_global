@@ -13,23 +13,28 @@
     <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     <style>
         :root {
-            --accent-primary: #a78bfa;
-            --accent-secondary: #22d3ee;
-            --text-main: #f8fafc;
-            --text-muted: #cbd5e1;
-            --card-shadow: 0 10px 30px -10px rgba(0, 0, 0, 0.7);
+            --bg-body: #0a0f1c;
+            --bg-card: #161e2b;
+            --accent-primary: #8b5cf6;
+            --accent-secondary: #06b6d4;
+            --text-pure: #ffffff;
+            --text-bright: #f1f5f9;
         }
 
         body {
             font-family: 'Outfit', sans-serif;
-            background-color: var(--bg-deep);
-            color: var(--text-main);
+            background-color: var(--bg-body) !important;
+            color: var(--text-pure) !important;
             min-height: 100vh;
-            background-image:
-                radial-gradient(at 0% 0%, rgba(139, 92, 246, 0.1) 0px, transparent 50%),
-                radial-gradient(at 100% 100%, rgba(6, 182, 212, 0.1) 0px, transparent 50%);
-            background-attachment: fixed;
             line-height: 1.6;
+            font-weight: 600 !important;
+            /* Bold global text */
+        }
+
+        /* FORCE DARK BACKGROUND ON EVERYTHING */
+        html,
+        body {
+            background: var(--bg-body) !important;
         }
 
         h1,
@@ -45,145 +50,171 @@
         .h5,
         .h6 {
             color: #ffffff !important;
-            font-weight: 700;
+            font-weight: 900 !important;
+            /* Ultra bold headers */
+            text-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
+            margin-bottom: 1.5rem;
+        }
+
+        p,
+        span,
+        div,
+        td,
+        th,
+        a {
+            color: #ffffff !important;
+            /* Force all text to white */
         }
 
         .text-muted {
-            color: var(--text-muted) !important;
-        }
-
-        .form-label {
-            color: #ffffff;
-            font-weight: 500;
+            color: #cbd5e1 !important;
+            /* Bright enough to see */
+            font-weight: 500 !important;
         }
 
         .navbar {
-            background: var(--glass-bg);
-            backdrop-filter: blur(12px);
-            -webkit-backdrop-filter: blur(12px);
-            border-bottom: 1px solid var(--glass-border);
-            padding: 1.2rem 0;
+            background-color: #161e2b !important;
+            border-bottom: 3px solid var(--accent-primary) !important;
+            padding: 1.5rem 0;
             position: sticky;
             top: 0;
             z-index: 1020;
         }
 
         .navbar-brand {
-            font-weight: 700;
-            font-size: 1.5rem;
-            background: linear-gradient(135deg, #fff 0%, #cbd5e1 100%);
-            -webkit-background-clip: text;
-            background-clip: text;
-            -webkit-text-fill-color: transparent;
+            font-weight: 900 !important;
+            font-size: 2rem !important;
+            color: #ffffff !important;
         }
 
         .nav-link {
-            font-weight: 500;
-            color: var(--text-muted) !important;
-            transition: all 0.3s ease;
-        }
-
-        .nav-link:hover {
-            color: var(--text-main) !important;
-            transform: translateY(-1px);
+            font-weight: 800 !important;
+            font-size: 1.1rem !important;
+            color: #ffffff !important;
+            padding: 0.5rem 1.2rem !important;
         }
 
         .card {
-            background: var(--glass-bg);
-            backdrop-filter: blur(16px);
-            -webkit-backdrop-filter: blur(16px);
-            border: 1px solid var(--glass-border);
-            border-radius: 20px;
-            box-shadow: var(--card-shadow);
-            overflow: hidden;
+            background-color: var(--bg-card) !important;
+            border: 2px solid rgba(255, 255, 255, 0.2) !important;
+            border-radius: 24px !important;
+            box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.7) !important;
+            padding: 2.5rem;
+            margin-bottom: 2rem;
+            overflow: visible !important;
+        }
+
+        /* Form Visibility */
+        .form-label {
+            color: var(--accent-secondary) !important;
+            font-weight: 900 !important;
+            text-transform: uppercase;
+            font-size: 1rem !important;
+            letter-spacing: 1.5px;
+            margin-bottom: 0.8rem !important;
+            background: none !important;
+        }
+
+        .form-control {
+            background-color: #1e293b !important;
+            border: 3px solid #334155 !important;
+            color: #ffffff !important;
+            border-radius: 16px !important;
+            padding: 1.2rem !important;
+            font-size: 1.2rem !important;
+            font-weight: 700 !important;
+            margin-bottom: 0.5rem;
+        }
+
+        .form-control::placeholder {
+            color: rgba(255, 255, 255, 0.5) !important;
         }
 
         .btn-primary {
-            background: linear-gradient(135deg, var(--accent-primary) 0%, #7c3aed 100%);
-            border: none;
-            padding: 0.75rem 1.8rem;
-            border-radius: 12px;
-            font-weight: 600;
-            box-shadow: 0 4px 15px rgba(139, 92, 246, 0.3);
-            transition: all 0.3s ease;
+            background: #8b5cf6 !important;
+            border: 2px solid #ffffff !important;
+            /* White border for high contrast */
+            padding: 1rem 2.5rem !important;
+            border-radius: 16px !important;
+            font-weight: 900 !important;
+            font-size: 1.3rem !important;
+            color: #ffffff !important;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            box-shadow: 0 10px 20px rgba(0, 0, 0, 0.4) !important;
         }
 
         .btn-primary:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 8px 25px rgba(139, 92, 246, 0.4);
+            background: #7c3aed !important;
+            transform: scale(1.02);
         }
 
+        /* Table Visibility */
         .table {
-            color: var(--text-main);
+            color: #ffffff !important;
+            border-collapse: separate;
+            border-spacing: 0 10px;
         }
 
         .table thead th {
-            background: transparent;
-            color: var(--text-muted);
-            font-weight: 600;
+            background-color: rgba(255, 255, 255, 0.05) !important;
+            color: var(--accent-secondary) !important;
+            font-weight: 900 !important;
             text-transform: uppercase;
-            font-size: 0.7rem;
-            letter-spacing: 1.5px;
-            border-bottom: 1px solid var(--glass-border);
-            padding: 1.5rem 1rem;
+            font-size: 0.9rem !important;
+            letter-spacing: 2px;
+            padding: 1.5rem 1rem !important;
+            border: none !important;
+        }
+
+        .table tbody tr {
+            background-color: rgba(255, 255, 255, 0.03) !important;
+            border-radius: 12px;
         }
 
         .table td {
-            background: transparent;
-            border-bottom: 1px solid rgba(255, 255, 255, 0.05);
-            padding: 1.2rem 1rem;
+            font-weight: 700 !important;
+            padding: 1.5rem 1rem !important;
+            border: none !important;
+            vertical-align: middle;
         }
 
-        /* Custom Platform Styles */
         .badge-platform {
-            padding: 0.5rem 1rem;
-            border-radius: 8px;
-            font-weight: 600;
-            font-size: 0.75rem;
-            border: 1px solid rgba(255, 255, 255, 0.1);
+            padding: 0.7rem 1.4rem !important;
+            border-radius: 12px !important;
+            font-weight: 900 !important;
+            font-size: 0.9rem !important;
+            border: 2px solid currentColor !important;
         }
 
         .bg-platform-codeforces {
-            background: rgba(59, 130, 246, 0.2);
-            color: #60a5fa;
-            border-color: rgba(59, 130, 246, 0.3);
+            background: rgba(59, 130, 246, 0.4) !important;
+            color: #93c5fd !important;
+            border-color: #60a5fa !important;
         }
 
         .bg-platform-leetcode {
-            background: rgba(245, 158, 11, 0.2);
-            color: #fbbf24;
-            border-color: rgba(245, 158, 11, 0.3);
+            background: rgba(245, 158, 11, 0.4) !important;
+            color: #fde68a !important;
+            border-color: #fbbf24 !important;
         }
 
         .bg-platform-codechef {
-            background: rgba(168, 85, 247, 0.2);
-            color: #c084fc;
-            border-color: rgba(168, 85, 247, 0.3);
+            background: rgba(168, 85, 247, 0.4) !important;
+            color: #e9d5ff !important;
+            border-color: #c084fc !important;
         }
 
         .bg-platform-atcoder {
-            background: rgba(244, 63, 94, 0.2);
-            color: #fb7185;
-            border-color: rgba(244, 63, 94, 0.3);
+            background: rgba(244, 63, 94, 0.4) !important;
+            color: #fecdd3 !important;
+            border-color: #fb7185 !important;
         }
 
         .bg-platform-hackerrank {
-            background: rgba(34, 197, 94, 0.2);
-            color: #4ade80;
-            border-color: rgba(34, 197, 94, 0.3);
-        }
-
-        .avatar {
-            width: 48px;
-            height: 48px;
-            background: linear-gradient(135deg, rgba(255, 255, 255, 0.1) 0%, rgba(255, 255, 255, 0.05) 100%);
-            border: 1px solid var(--glass-border);
-            border-radius: 14px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-weight: 700;
-            color: var(--accent-primary);
+            background: rgba(34, 197, 94, 0.4) !important;
+            color: #bbf7d0 !important;
+            border-color: #4ade80 !important;
         }
     </style>
 </head>
@@ -225,7 +256,8 @@
                         </a>
                     </li>
                     <li class="nav-item">
-                        <a class="nav-link border border-white rounded ms-2" href="{{ url_for('signup') }}">
+                        <a class="nav-link border-2 border-white rounded px-3 ms-2 text-white fw-black"
+                            href="{{ url_for('signup') }}" style="border: 2px solid #ffffff !important;">
                             <i class="fas fa-user-plus me-1"></i>Sign Up
                         </a>
                     </li>
@@ -239,9 +271,10 @@
         {% with messages = get_flashed_messages(with_categories=true) %}
         {% if messages %}
         {% for category, message in messages %}
-        <div class="alert alert-{{ category }} alert-dismissible fade show shadow-sm" role="alert">
-            {{ message }}
-            <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+        <div class="alert alert-{{ category }} alert-dismissible fade show shadow-lg border-2" role="alert"
+            style="background-color: #1e293b !important; color: #ffffff !important; border-color: var(--accent-primary) !important;">
+            <strong class="text-white fs-5">{{ message }}</strong>
+            <button type="button" class="btn-close btn-close-white" data-bs-dismiss="alert"></button>
         </div>
         {% endfor %}
         {% endif %}
@@ -250,10 +283,11 @@
         {% block content %}{% endblock %}
     </div>
 
-    <footer class="py-5 text-center mt-auto"
-        style="border-top: 1px solid var(--glass-border); background: rgba(15, 23, 42, 0.3);">
+    <footer class="py-5 text-center mt-5"
+        style="border-top: 2px solid var(--accent-primary); background: #0a0f1c !important;">
         <div class="container">
-            <p class="text-muted mb-0">&copy; 2024 Global Score Tracker. Crafted for the competitive community.</p>
+            <p class="text-white fw-bold mb-0" style="font-size: 1.1rem !important;">&copy; 2024 Global Score Tracker.
+                Built for Elite Performance.</p>
         </div>
     </footer>
 
