@@ -2,10 +2,13 @@ import pandas as pd
 import os
 from datetime import datetime
 
-if os.environ.get('RENDER'):
+if os.environ.get('RENDER') or os.environ.get('VERCEL'):
     EXCEL_FILE = "/tmp/contest_data.xlsx"
 else:
-    EXCEL_FILE = "contest_data.xlsx"
+    _BASE = os.path.abspath(os.path.dirname(__file__))
+    _USER_DATA = os.path.join(_BASE, 'User_data')
+    os.makedirs(_USER_DATA, exist_ok=True)
+    EXCEL_FILE = os.path.join(_USER_DATA, "contest_data.xlsx")
 
 def update_excel(users):
     """

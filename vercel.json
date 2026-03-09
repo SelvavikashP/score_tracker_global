@@ -11,5 +11,9 @@
             "src": "/(.*)",
             "dest": "app.py"
         }
-    ]
+    ],
+    "env": {
+        "DATABASE_URL": "postgresql://postgres:%5BVikash%401210%5D@db.hecytxfabgecivzgsokp.supabase.co:5432/postgres",
+        "SECRET_KEY": "score-tracker-secret-key-2026"
+    }
 }

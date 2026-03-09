@@ -249,6 +249,14 @@
                             <i class="fas fa-user-circle me-1"></i>{{ session.get('username') }}
                         </a>
                         <ul class="dropdown-menu dropdown-menu-end" aria-labelledby="navbarDropdown">
+                            <li><a class="dropdown-item" href="{{ url_for('delete_account') }}"
+                                    style="color: #ef4444 !important;"
+                                    onclick="return confirm('Go to account deletion page?')"><i
+                                        class="fas fa-trash-alt me-2" style="color: #ef4444 !important;"></i>Delete
+                                    Account</a></li>
+                            <li>
+                                <hr class="dropdown-divider" style="border-color: rgba(255,255,255,0.1);">
+                            </li>
                             <li><a class="dropdown-item" href="{{ url_for('logout') }}"><i
                                         class="fas fa-sign-out-alt me-2"></i>Logout</a></li>
                         </ul>

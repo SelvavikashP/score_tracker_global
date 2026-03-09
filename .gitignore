@@ -7,3 +7,9 @@ contest_data.xlsx
 .idea/
 *.log
 *.sqlite
+.vercel
+# Local user data storage (private - do not commit)
+User_data/database.db
+User_data/login_log.json
+User_data/contest_data.xlsx
+.env*.local
