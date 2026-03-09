@@ -187,6 +187,28 @@ def refresh(user_id):
         flash('Failed to update data.', 'danger')
     return redirect(url_for('index'))
 
+@app.route('/sync_all')
+@login_required
+def sync_all():
+    account_id = session.get('account_id')
+    users = User.query.filter_by(account_id=account_id).all()
+    count = 0
+    for user in users:
+        data = fetch_user_data(user.profile_url, user.platform)
+        if data:
+            user.rating = data.get('rating', 0)
+            user.rank = data.get('rank', 'Unrated')
+            user.global_rank = data.get('global_rank', 0)
+            user.country_rank = data.get('country_rank', 0)
+            user.recent_problems = data.get('recent_problems', 0)
+            user.total_contests = data.get('total_contests', 0)
+            user.last_updated = datetime.utcnow()
+            count += 1
+    db.session.commit()
+    update_excel(users)
+    flash(f'Successfully synced {count} profiles.', 'success')
+    return redirect(url_for('index'))
+
 @app.route('/delete/<int:user_id>')
 @login_required
 def delete_user(user_id):
