@@ -10,98 +10,157 @@
     <!-- Font Awesome -->
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
     <!-- Google Fonts -->
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     <style>
         :root {
-            --primary-gradient: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            --secondary-bg: #f8f9fa;
+            --bg-deep: #0f172a;
+            --glass-bg: rgba(30, 41, 59, 0.7);
+            --glass-border: rgba(255, 255, 255, 0.1);
+            --accent-primary: #8b5cf6;
+            --accent-secondary: #06b6d4;
+            --text-main: #f8fafc;
+            --text-muted: #94a3b8;
+            --card-shadow: 0 10px 30px -10px rgba(0, 0, 0, 0.5);
         }
 
         body {
-            font-family: 'Inter', sans-serif;
-            background-color: #f4f7f6;
-            color: #2d3436;
+            font-family: 'Outfit', sans-serif;
+            background-color: var(--bg-deep);
+            color: var(--text-main);
+            min-height: 100vh;
+            background-image:
+                radial-gradient(at 0% 0%, rgba(139, 92, 246, 0.15) 0px, transparent 50%),
+                radial-gradient(at 100% 100%, rgba(6, 182, 212, 0.15) 0px, transparent 50%);
+            background-attachment: fixed;
         }
 
         .navbar {
-            background: var(--primary-gradient);
-            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
-            padding: 1rem 0;
+            background: var(--glass-bg);
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+            border-bottom: 1px solid var(--glass-border);
+            padding: 1.2rem 0;
+            position: sticky;
+            top: 0;
+            z-index: 1020;
         }
 
         .navbar-brand {
             font-weight: 700;
-            letter-spacing: -0.5px;
-            color: white !important;
+            font-size: 1.5rem;
+            background: linear-gradient(135deg, #fff 0%, #cbd5e1 100%);
+            -webkit-background-clip: text;
+            background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        .nav-link {
+            font-weight: 500;
+            color: var(--text-muted) !important;
+            transition: all 0.3s ease;
+        }
+
+        .nav-link:hover {
+            color: var(--text-main) !important;
+            transform: translateY(-1px);
         }
 
         .card {
-            border-radius: 12px;
-            transition: transform 0.2s, box-shadow 0.2s;
-        }
-
-        .card:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 8px 24px rgba(0, 0, 0, 0.08);
-        }
-
-        .avatar {
-            width: 40px;
-            height: 40px;
-            background: #e9ecef;
-            border-radius: 50%;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-weight: 600;
-            color: #495057;
-        }
-
-        /* Platform Badges */
-        .bg-platform-codeforces {
-            background-color: #1a1a1a !important;
-            color: white;
-        }
-
-        .bg-platform-leetcode {
-            background-color: #ffa116 !important;
-            color: white;
-        }
-
-        .bg-platform-codechef {
-            background-color: #5b4638 !important;
-            color: white;
-        }
-
-        .bg-platform-atcoder {
-            background-color: #212121 !important;
-            color: white;
-        }
-
-        .bg-platform-hackerrank {
-            background-color: #2ec866 !important;
-            color: white;
+            background: var(--glass-bg);
+            backdrop-filter: blur(16px);
+            -webkit-backdrop-filter: blur(16px);
+            border: 1px solid var(--glass-border);
+            border-radius: 20px;
+            box-shadow: var(--card-shadow);
+            overflow: hidden;
         }
 
         .btn-primary {
-            background: var(--primary-gradient);
+            background: linear-gradient(135deg, var(--accent-primary) 0%, #7c3aed 100%);
             border: none;
-            padding: 0.6rem 1.5rem;
-            border-radius: 8px;
+            padding: 0.75rem 1.8rem;
+            border-radius: 12px;
             font-weight: 600;
+            box-shadow: 0 4px 15px rgba(139, 92, 246, 0.3);
+            transition: all 0.3s ease;
+        }
+
+        .btn-primary:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 25px rgba(139, 92, 246, 0.4);
+        }
+
+        .table {
+            color: var(--text-main);
         }
 
         .table thead th {
+            background: transparent;
+            color: var(--text-muted);
             font-weight: 600;
             text-transform: uppercase;
-            font-size: 0.75rem;
-            letter-spacing: 0.5px;
-            border-top: none;
+            font-size: 0.7rem;
+            letter-spacing: 1.5px;
+            border-bottom: 1px solid var(--glass-border);
+            padding: 1.5rem 1rem;
         }
 
-        .badge-recent {
-            font-size: 0.8rem;
-            padding: 0.4em 0.8em;
+        .table td {
+            background: transparent;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+            padding: 1.2rem 1rem;
+        }
+
+        /* Custom Platform Styles */
+        .badge-platform {
+            padding: 0.5rem 1rem;
+            border-radius: 8px;
+            font-weight: 600;
+            font-size: 0.75rem;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        .bg-platform-codeforces {
+            background: rgba(59, 130, 246, 0.2);
+            color: #60a5fa;
+            border-color: rgba(59, 130, 246, 0.3);
+        }
+
+        .bg-platform-leetcode {
+            background: rgba(245, 158, 11, 0.2);
+            color: #fbbf24;
+            border-color: rgba(245, 158, 11, 0.3);
+        }
+
+        .bg-platform-codechef {
+            background: rgba(168, 85, 247, 0.2);
+            color: #c084fc;
+            border-color: rgba(168, 85, 247, 0.3);
+        }
+
+        .bg-platform-atcoder {
+            background: rgba(244, 63, 94, 0.2);
+            color: #fb7185;
+            border-color: rgba(244, 63, 94, 0.3);
+        }
+
+        .bg-platform-hackerrank {
+            background: rgba(34, 197, 94, 0.2);
+            color: #4ade80;
+            border-color: rgba(34, 197, 94, 0.3);
+        }
+
+        .avatar {
+            width: 48px;
+            height: 48px;
+            background: linear-gradient(135deg, rgba(255, 255, 255, 0.1) 0%, rgba(255, 255, 255, 0.05) 100%);
+            border: 1px solid var(--glass-border);
+            border-radius: 14px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: 700;
+            color: var(--accent-primary);
         }
     </style>
 </head>

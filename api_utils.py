@@ -199,39 +199,56 @@ def fetch_codechef_data(handle):
             }
 
         soup = BeautifulSoup(response.text, 'html.parser')
+        
+        # Rating
         rating_div = soup.find('div', class_='rating-number')
         rating = int(rating_div.text) if rating_div else 0
         
-        stars_span = soup.find('span', class_='rating')
-        stars = stars_span.text if stars_span else "Unrated"
+        # Stars
+        stars_span = soup.find('span', class_='rating') or soup.find('div', class_='rating-star') or soup.find('span', class_='rating-star')
+        stars = stars_span.text.strip() if stars_span else "Unrated"
         
+        # Ranks
         global_rank = 0
         country_rank = 0
         rank_list = soup.find('div', class_='rating-ranks')
         if rank_list:
             ranks = rank_list.find_all('strong')
             if len(ranks) >= 2:
+                # Some profiles have a more structured list, we'll try to be careful
                 global_rank = int(ranks[0].text) if ranks[0].text.isdigit() else 0
                 country_rank = int(ranks[1].text) if ranks[1].text.isdigit() else 0
                 
-        # Try to find contest count and problems solved
+        # Total contests - more reliable search in text
         total_contests = 0
-        recent_problems = 0
-        
-        # Contest count often in Rating history or a script tag
-        contest_matches = re.findall(r'(\d+)\s+Contests', response.text)
-        if contest_matches:
-            total_contests = int(contest_matches[0])
+        participated_match = re.search(r'No\. of Contests Participated:\s*(\d+)', response.text)
+        if participated_match:
+            total_contests = int(participated_match.group(1))
+        else:
+            # Fallback
+            contest_matches = re.findall(r'(\d+)\s+Contests', response.text)
+            if contest_matches:
+                total_contests = int(contest_matches[0])
             
-        # Problems solved section
-        solved_section = soup.find('section', class_='problems-solved')
-        if solved_section:
-            try:
-                h3_text = solved_section.find('h3').text
-                count_match = re.search(r'\((\d+)\)', h3_text)
-                if count_match:
-                    recent_problems = int(count_match.group(1))
-            except: pass
+        # Total solved problems
+        recent_problems = 0
+        # Check for "Total Problems Solved" heading
+        solved_heading = soup.find(lambda tag: tag.name == "h3" and "Total Problems Solved" in tag.text)
+        if solved_heading:
+            count_match = re.search(r'(\d+)', solved_heading.text)
+            if count_match:
+                recent_problems = int(count_match.group(1))
+        
+        if recent_problems == 0:
+            # Fallback: old section based method
+            solved_section = soup.find('section', class_='problems-solved')
+            if solved_section:
+                try:
+                    h3_text = solved_section.find('h3').text
+                    count_match = re.search(r'\((\d+)\)', h3_text)
+                    if count_match:
+                        recent_problems = int(count_match.group(1))
+                except: pass
 
         return {
             "rating": rating,

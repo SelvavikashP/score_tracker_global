@@ -1,44 +1,56 @@
 {% extends "layout.html" %}
 
 {% block content %}
-<div class="row justify-content-center mt-5">
-    <div class="col-md-5">
-        <div class="card shadow-lg border-0">
+<div class="row justify-content-center align-items-center" style="min-height: 80vh;">
+    <div class="col-md-5 col-lg-4">
+        <div class="card shadow-2xl border-0">
             <div class="card-body p-5">
-                <div class="text-center mb-4">
-                    <i class="fas fa-user-plus fa-3x text-primary mb-3"></i>
-                    <h2 class="fw-bold mb-2">Create an Account</h2>
-                    <p class="text-muted">Register to add and manage profiles.</p>
+                <div class="text-center mb-5">
+                    <div class="d-inline-flex align-items-center justify-content-center mb-4"
+                        style="width: 64px; height: 64px; background: rgba(6, 182, 212, 0.1); border-radius: 16px;">
+                        <i class="fas fa-user-plus fa-2x" style="color: var(--accent-secondary);"></i>
+                    </div>
+                    <h2 class="fw-bold mb-2">Create Account</h2>
+                    <p class="text-muted">Join the community of top-tier coders.</p>
                 </div>
 
                 <form method="POST" action="{{ url_for('signup') }}">
                     <div class="mb-3">
-                        <label for="username" class="form-label fw-600">Username</label>
-                        <input type="text" class="form-control form-control-lg bg-light border-0" id="username"
-                            name="username" placeholder="Choose a username" required>
+                        <label for="username" class="form-label small text-uppercase fw-bold text-muted"
+                            style="letter-spacing: 1px;">Username</label>
+                        <input type="text" class="form-control form-control-lg" id="username" name="username"
+                            placeholder="coder_pro"
+                            style="background: rgba(255,255,255,0.03); border: 1px solid var(--glass-border); color: #fff; border-radius: 12px; font-size: 1rem;"
+                            required>
                     </div>
 
                     <div class="mb-3">
-                        <label for="email" class="form-label fw-600">Email Address</label>
-                        <input type="email" class="form-control form-control-lg bg-light border-0" id="email"
-                            name="email" placeholder="name@example.com" required>
+                        <label for="email" class="form-label small text-uppercase fw-bold text-muted"
+                            style="letter-spacing: 1px;">Email Address</label>
+                        <input type="email" class="form-control form-control-lg" id="email" name="email"
+                            placeholder="pro@domain.com"
+                            style="background: rgba(255,255,255,0.03); border: 1px solid var(--glass-border); color: #fff; border-radius: 12px; font-size: 1rem;"
+                            required>
                     </div>
 
-                    <div class="mb-4">
-                        <label for="password" class="form-label fw-600">Password</label>
-                        <input type="password" class="form-control form-control-lg bg-light border-0" id="password"
-                            name="password" placeholder="Create a password" required>
+                    <div class="mb-5">
+                        <label for="password" class="form-label small text-uppercase fw-bold text-muted"
+                            style="letter-spacing: 1px;">Password</label>
+                        <input type="password" class="form-control form-control-lg" id="password" name="password"
+                            placeholder="••••••••"
+                            style="background: rgba(255,255,255,0.03); border: 1px solid var(--glass-border); color: #fff; border-radius: 12px; font-size: 1rem;"
+                            required>
                     </div>
 
-                    <button type="submit" class="btn btn-primary btn-lg d-block w-100 mb-3 shadow-sm">
-                        Create Account
+                    <button type="submit" class="btn btn-primary btn-lg w-100 mb-4">
+                        Get Started
                     </button>
-
-                    <div class="text-center mt-4">
-                        <span class="text-muted">Already have an account?</span>
-                        <a href="{{ url_for('login') }}" class="text-decoration-none fw-bold">Sign In</a>
-                    </div>
                 </form>
+
+                <div class="text-center pt-3 border-top" style="border-color: rgba(255,255,255,0.05) !important;">
+                    <p class="text-muted mb-0">Already a member? <a href="{{ url_for('login') }}"
+                            class="fw-bold text-decoration-none" style="color: var(--accent-primary);">Sign In</a></p>
+                </div>
             </div>
         </div>
     </div>

@@ -1,43 +1,55 @@
 {% extends "layout.html" %}
 
 {% block content %}
-<div class="row justify-content-center mt-5">
-    <div class="col-md-5">
-        <div class="card shadow-lg border-0 text-center">
+<div class="row justify-content-center align-items-center" style="min-height: 80vh;">
+    <div class="col-md-5 col-lg-4">
+        <div class="card shadow-2xl border-0">
             <div class="card-body p-5">
-                <i class="fas fa-lock fa-3x text-primary mb-3"></i>
-                <h2 class="fw-bold mb-4">Welcome Back</h2>
-                <p class="text-muted mb-4">Sign in to manage the global tracker profiles.
-                </p>
+                <div class="text-center mb-5">
+                    <div class="d-inline-flex align-items-center justify-content-center mb-4"
+                        style="width: 64px; height: 64px; background: rgba(139, 92, 246, 0.1); border-radius: 16px;">
+                        <i class="fas fa-lock-open fa-2x" style="color: var(--accent-primary);"></i>
+                    </div>
+                    <h2 class="fw-bold mb-2">Welcome</h2>
+                    <p class="text-muted">Sign in to sync your global performance.</p>
+                </div>
 
                 <form method="POST" action="{{ url_for('login') }}">
-                    <div class="mb-3 text-start">
-                        <label for="email" class="form-label fw-600">Email Address</label>
-                        <input type="email" class="form-control form-control-lg bg-light border-0" id="email"
-                            name="email" placeholder="name@example.com" required>
+                    <div class="mb-4">
+                        <label for="email" class="form-label small text-uppercase fw-bold text-muted"
+                            style="letter-spacing: 1px;">Email Address</label>
+                        <input type="email" class="form-control form-control-lg" id="email" name="email"
+                            placeholder="name@example.com"
+                            style="background: rgba(255,255,255,0.03); border: 1px solid var(--glass-border); color: #fff; border-radius: 12px; font-size: 1rem;"
+                            required>
                     </div>
 
-                    <div class="mb-4 text-start">
-                        <label for="password" class="form-label fw-600">Password</label>
-                        <input type="password" class="form-control form-control-lg bg-light border-0" id="password"
-                            name="password" placeholder="Enter your password" required>
+                    <div class="mb-5">
+                        <label for="password" class="form-label small text-uppercase fw-bold text-muted"
+                            style="letter-spacing: 1px;">Password</label>
+                        <input type="password" class="form-control form-control-lg" id="password" name="password"
+                            placeholder="••••••••"
+                            style="background: rgba(255,255,255,0.03); border: 1px solid var(--glass-border); color: #fff; border-radius: 12px; font-size: 1rem;"
+                            required>
                     </div>
 
-                    <button type="submit" class="btn btn-primary btn-lg d-block w-100 mb-4 shadow-sm">
-                        Sign In
+                    <button type="submit" class="btn btn-primary btn-lg w-100 mb-4">
+                        Continue
                     </button>
                 </form>
 
-                <div class="text-center mt-3 border-top pt-4">
-                    <span class="text-muted">Don't have an account?</span>
-                    <a href="{{ url_for('signup') }}" class="text-decoration-none fw-bold">Sign Up</a>
-                </div>
-
-                <div class="text-center mt-3">
-                    <a href="{{ url_for('index') }}" class="text-decoration-none text-muted small">Return to
-                        Leaderboard</a>
+                <div class="text-center pt-3 border-top" style="border-color: rgba(255,255,255,0.05) !important;">
+                    <p class="text-muted mb-0">No account yet? <a href="{{ url_for('signup') }}"
+                            class="fw-bold text-decoration-none" style="color: var(--accent-secondary);">Join the
+                            Leaderboard</a></p>
                 </div>
             </div>
+        </div>
+        <div class="text-center mt-4">
+            <a href="{{ url_for('index') }}" class="text-decoration-none text-muted small hover-main"
+                onmouseover="this.style.color='#fff'" onmouseout="this.style.color='var(--text-muted)'">
+                <i class="fas fa-arrow-left me-2"></i>Return to Leaderboard
+            </a>
         </div>
     </div>
 </div>

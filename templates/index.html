@@ -1,114 +1,145 @@
 {% extends "layout.html" %}
 
 {% block content %}
-<div class="row mb-4">
-    <div class="col-md-8">
-        <h2 class="display-6 fw-bold">Global Leaderboard</h2>
-        <p class="text-muted">Tracking rankings across Codeforces, CodeChef, LeetCode, AtCoder, and HackerRank.</p>
+<div class="row align-items-center mb-5">
+    <div class="col-lg-8">
+        <h1 class="display-5 fw-bold mb-2">Leaderboard</h1>
+        <p class="text-muted fs-5 mb-0">Elevating your competitive programming profile across the globe.</p>
     </div>
     {% if logged_in %}
-    <div class="col-md-4 text-end">
-        <a href="{{ url_for('register') }}" class="btn btn-primary">
-            <i class="fas fa-user-plus me-1"></i>Add New User
-        </a>
+    <div class="col-lg-4 text-lg-end mt-4 mt-lg-0">
+        <div class="d-flex gap-2 justify-content-lg-end">
+            <a href="{{ url_for('register') }}" class="btn btn-primary d-inline-flex align-items-center">
+                <i class="fas fa-plus-circle me-2"></i>New Profile
+            </a>
+            <a href="{{ url_for('download') }}" class="btn btn-outline-light d-inline-flex align-items-center"
+                style="border-radius: 12px; border: 1px solid var(--glass-border); background: var(--glass-bg); padding: 0.75rem 1.5rem;">
+                <i class="fas fa-file-export me-2"></i>Export
+            </a>
+        </div>
     </div>
     {% endif %}
 </div>
 
-<div class="card shadow-sm border-0 mb-4">
-    <div class="card-body p-0">
-        <div class="table-responsive">
-            <table class="table table-hover align-middle mb-0">
-                <thead class="bg-light text-dark">
-                    <tr>
-                        <th class="ps-4">#Rank</th>
-                        <th>User</th>
-                        <th>Platform</th>
-                        <th>Rating / Rank</th>
-                        <th>Global Ranking</th>
-                        <th class="text-center">Solved</th>
-                        <th class="text-center">Contests</th>
-                        <th>Last Updated</th>
-                        {% if logged_in %}
-                        <th class="text-center">Actions</th>
-                        {% endif %}
-                    </tr>
-                </thead>
-                <tbody>
-                    {% for user in users %}
-                    <tr>
-                        <td class="ps-4 fw-bold">#{{ loop.index }}</td>
-                        <td>
-                            <div class="d-flex align-items-center">
-                                <span class="avatar me-2">{{ user.name[0] }}</span>
-                                <div>
-                                    <div class="fw-bold">{{ user.name }}</div>
-                                    <small class="text-muted"><a href="{{ user.profile_url }}" target="_blank"
-                                            class="text-decoration-none">View Profile</a></small>
-                                </div>
+<div class="card shadow-lg border-0 overflow-hidden" style="background: rgba(15, 23, 42, 0.4);">
+    <div class="table-responsive">
+        <table class="table table-hover align-middle mb-0">
+            <thead>
+                <tr>
+                    <th class="ps-4">Rank</th>
+                    <th>User Profile</th>
+                    <th>Platform</th>
+                    <th>Rating / Status</th>
+                    <th>Performance</th>
+                    <th class="text-center">Activity</th>
+                    {% if logged_in %}
+                    <th class="text-end pe-4">Manage</th>
+                    {% endif %}
+                </tr>
+            </thead>
+            <tbody>
+                {% for user in users %}
+                <tr style="transition: all 0.2s ease;">
+                    <td class="ps-4">
+                        <span class="fs-5 fw-bold text-muted">#{{ loop.index }}</span>
+                    </td>
+                    <td>
+                        <div class="d-flex align-items-center">
+                            <div class="avatar me-3">
+                                {{ user.name[0].upper() }}
                             </div>
-                        </td>
-                        <td>
-                            <span class="badge bg-platform-{{ user.platform.lower() }}">{{ user.platform }}</span>
-                        </td>
-                        <td>
-                            <span class="fw-bold text-primary">{{ user.rating }}</span>
-                            <br>
-                            <small class="text-muted">{{ user.rank }}</small>
-                        </td>
-                        <td>
-                            <div class="small">
-                                {% if user.platform.lower() == 'codeforces' or user.platform.lower() == 'atcoder' %}
-                                <strong>Last Contest Rank:</strong> {{ user.global_rank if user.global_rank > 0 else
-                                'N/A' }}
-                                {% else %}
-                                <strong>Global Rank:</strong> {{ user.global_rank if user.global_rank > 0 else 'N/A' }}
-                                {% endif %}
-                                {% if user.country_rank > 0 %}
-                                <br><strong>Country Rank:</strong> {{ user.country_rank }}
-                                {% endif %}
+                            <div>
+                                <div class="fw-bold fs-6">{{ user.name }}</div>
+                                <a href="{{ user.profile_url }}" target="_blank"
+                                    class="small text-accent-secondary text-decoration-none"
+                                    style="color: var(--accent-secondary);">
+                                    Visit Profile <i class="fas fa-external-link-alt ms-1"
+                                        style="font-size: 0.7rem;"></i>
+                                </a>
                             </div>
-                        </td>
-                        <td class="text-center">
-                            <span class="badge bg-success rounded-pill badge-recent"
-                                title="Total problems solved on this platform">
-                                {{ user.recent_problems }}
-                            </span>
-                        </td>
-                        <td class="text-center">{{ user.total_contests }}</td>
-                        <td><small class="text-muted">{{ user.last_updated.strftime('%Y-%m-%d %H:%M') }}</small></td>
-                        {% if logged_in %}
-                        <td class="text-center">
-                            <a href="{{ url_for('refresh', user_id=user.id) }}" class="btn btn-sm btn-outline-secondary"
-                                title="Refresh Data">
+                        </div>
+                    </td>
+                    <td>
+                        <span class="badge-platform bg-platform-{{ user.platform.lower() }}">
+                            {{ user.platform.upper() }}
+                        </span>
+                    </td>
+                    <td>
+                        <div class="fw-bold fs-5" style="color: var(--accent-primary);">{{ user.rating }}</div>
+                        <div class="small text-muted">{{ user.rank }}</div>
+                    </td>
+                    <td>
+                        <div class="small">
+                            {% if user.platform.lower() == 'codeforces' or user.platform.lower() == 'atcoder' %}
+                            <div class="mb-1"><span class="text-muted">Last Performance:</span> <span
+                                    class="fw-medium text-info">{{ user.global_rank if user.global_rank > 0 else 'N/A'
+                                    }}</span></div>
+                            {% else %}
+                            <div class="mb-1"><span class="text-muted">Global Rank:</span> <span
+                                    class="fw-medium text-info">{{ user.global_rank if user.global_rank > 0 else 'N/A'
+                                    }}</span></div>
+                            {% endif %}
+
+                            {% if user.country_rank > 0 %}
+                            <div><span class="text-muted">Country Rank:</span> <span class="fw-medium text-success">{{
+                                    user.country_rank }}</span></div>
+                            {% endif %}
+                        </div>
+                    </td>
+                    <td class="text-center">
+                        <div class="d-flex justify-content-center gap-3">
+                            <div class="text-center">
+                                <div class="fw-bold">{{ user.recent_problems }}</div>
+                                <div class="text-uppercase text-muted" style="font-size: 0.6rem; letter-spacing: 1px;">
+                                    Solved</div>
+                            </div>
+                            <div class="text-center border-start ps-3"
+                                style="border-color: rgba(255,255,255,0.1) !important;">
+                                <div class="fw-bold">{{ user.total_contests }}</div>
+                                <div class="text-uppercase text-muted" style="font-size: 0.6rem; letter-spacing: 1px;">
+                                    Contests</div>
+                            </div>
+                        </div>
+                    </td>
+                    {% if logged_in %}
+                    <td class="text-end pe-4">
+                        <div class="d-flex justify-content-end gap-2">
+                            <a href="{{ url_for('refresh', user_id=user.id) }}" class="btn btn-sm"
+                                style="border-radius: 8px; background: rgba(255,255,255,0.05); color: #fff; width: 36px; height: 36px; display: flex; align-items: center; justify-content: center;"
+                                title="Sync Data">
                                 <i class="fas fa-sync-alt"></i>
                             </a>
-                            <a href="{{ url_for('delete_user', user_id=user.id) }}"
-                                class="btn btn-sm btn-outline-danger"
-                                onclick="return confirm('Are you sure you want to delete this user?')"
-                                title="Delete User">
+                            <a href="{{ url_for('delete_user', user_id=user.id) }}" class="btn btn-sm"
+                                style="border-radius: 8px; background: rgba(239, 68, 68, 0.1); color: #ef4444; width: 36px; height: 36px; display: flex; align-items: center; justify-content: center;"
+                                onclick="return confirm('Archive this profile?')" title="Delete">
                                 <i class="fas fa-trash-alt"></i>
                             </a>
-                        </td>
-                        {% endif %}
-                    </tr>
-                    {% else %}
-                    <tr>
-                        <td colspan="{% if logged_in %}9{% else %}8{% endif %}" class="text-center py-5">
-                            <div class="text-muted">
-                                <i class="fas fa-users-slash fa-3x mb-3"></i>
-                                <p>No users registered yet.</p>
-                                {% if logged_in %}
-                                <p>Start by adding one!</p>
-                                <a href="{{ url_for('register') }}" class="btn btn-sm btn-outline-primary">Add User</a>
-                                {% endif %}
-                            </div>
-                        </td>
-                    </tr>
-                    {% endfor %}
-                </tbody>
-            </table>
-        </div>
+                        </div>
+                    </td>
+                    {% endif %}
+                </tr>
+                {% else %}
+                <tr>
+                    <td colspan="7" class="text-center py-5">
+                        <div class="py-5">
+                            <i class="fas fa-ghost fa-4x mb-4 text-muted opacity-25"></i>
+                            <h3 class="fw-bold">No Records Found</h3>
+                            <p class="text-muted mb-4">You haven't added any profiles to track yet.</p>
+                            {% if logged_in %}
+                            <a href="{{ url_for('register') }}" class="btn btn-primary">Initialize Profile</a>
+                            {% endif %}
+                        </div>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
     </div>
 </div>
+
+<div class="mt-4 text-center">
+    <small class="text-muted">Last database synchronization: <span class="text-info">{{
+            users[0].last_updated.strftime('%Y-%m-%d %H:%M') if users else 'N/A' }}</span></small>
+</div>
+{% endblock %}
 {% endblock %}
