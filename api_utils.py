@@ -187,9 +187,15 @@ def fetch_codechef_data(handle):
     except: pass
 
     # Scrape to get actual contests and solved problems (API doesn't have it)
-    url = f"https://www.codechef.com/users/{handle}"
+    # We use corsproxy to bypass Cloudflare blocking which affects cloud IPs like Render
+    url = f"https://corsproxy.io/?url=https://www.codechef.com/users/{handle}"
     try:
         response = requests.get(url, headers=DEFAULT_HEADERS, timeout=15)
+        if response.status_code != 200:
+            # Fallback to direct url if proxy fails
+            url = f"https://www.codechef.com/users/{handle}"
+            response = requests.get(url, headers=DEFAULT_HEADERS, timeout=15)
+            
         if response.status_code == 200 and "This user is blocked" not in response.text:
             soup = BeautifulSoup(response.text, 'html.parser')
             
