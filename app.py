@@ -1,10 +1,14 @@
-from flask import Flask, render_template, request, redirect, url_for, flash, send_file
-from models import db, User
+from flask import Flask, render_template, request, redirect, url_for, flash, session, send_file
+from models import db, User, Account
 from api_utils import fetch_user_data
 from excel_utils import update_excel, get_excel_path
 from flask_apscheduler import APScheduler
 import os
 from datetime import datetime
+from functools import wraps
+from werkzeug.security import generate_password_hash, check_password_hash
+from authlib.integrations.flask_client import OAuth
+from functools import wraps
 
 app = Flask(__name__)
 
@@ -23,6 +27,15 @@ app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 app.config['SECRET_KEY'] = 'your-secret-key'
 
 db.init_app(app)
+
+def login_required(f):
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
+        if 'account_id' not in session:
+            flash('Please log in to access this page.', 'warning')
+            return redirect(url_for('login'))
+        return f(*args, **kwargs)
+    return decorated_function
 scheduler = APScheduler()
 
 # Ensure DB tables exist when app is imported (works with gunicorn on Render)
@@ -47,11 +60,66 @@ def update_all_users():
         print(f"Daily update completed: {datetime.now()}")
 
 @app.route('/')
+@login_required
 def index():
-    users = User.query.order_by(User.rating.desc()).all()
-    return render_template('index.html', users=users)
+    account_id = session.get('account_id')
+    users = User.query.filter_by(account_id=account_id).order_by(User.rating.desc()).all()
+    logged_in = True
+    username = session.get('username')
+    return render_template('index.html', users=users, logged_in=logged_in, username=username)
+
+@app.route('/signup', methods=['GET', 'POST'])
+def signup():
+    if request.method == 'POST':
+        username = request.form.get('username')
+        email = request.form.get('email')
+        password = request.form.get('password')
+
+        if not username or not email or not password:
+            flash('All fields are required', 'danger')
+            return redirect(url_for('signup'))
+
+        existing_account = Account.query.filter_by(email=email).first()
+        if existing_account:
+            flash('An account with that email already exists.', 'warning')
+            return redirect(url_for('signup'))
+
+        hashed_password = generate_password_hash(password)
+        new_account = Account(username=username, email=email, password_hash=hashed_password)
+        db.session.add(new_account)
+        db.session.commit()
+
+        flash('Registration successful. Please log in.', 'success')
+        return redirect(url_for('login'))
+
+    return render_template('signup.html')
+
+@app.route('/login', methods=['GET', 'POST'])
+def login():
+    if request.method == 'POST':
+        email = request.form.get('email')
+        password = request.form.get('password')
+        
+        account = Account.query.filter_by(email=email).first()
+        if account and check_password_hash(account.password_hash, password):
+            session['account_id'] = account.id
+            session['username'] = account.username
+            flash('Logged in successfully.', 'success')
+            return redirect(url_for('index'))
+        else:
+            flash('Invalid email or password.', 'danger')
+            
+    return render_template('login.html')
+
+@app.route('/logout')
+def logout():
+    session.pop('account_id', None)
+    session.pop('username', None)
+    flash('You have been logged out.', 'info')
+    return redirect(url_for('index'))
 
 @app.route('/register', methods=['GET', 'POST'])
+@login_required
 def register():
     if request.method == 'POST':
         name = request.form.get('name')
@@ -75,6 +143,7 @@ def register():
             return redirect(url_for('register'))
 
         new_user = User(
+            account_id=session.get('account_id'),
             name=name,
             platform=platform,
             profile_url=profile_url,
@@ -87,16 +156,18 @@ def register():
         )
         db.session.add(new_user)
         db.session.commit()
-        
-        # Update Excel
-        update_excel(User.query.all())
-        
+
+        # Update Excel with only this account's profiles
+        account_users = User.query.filter_by(account_id=session.get('account_id')).all()
+        update_excel(account_users)
+
         flash('Registration successful!', 'success')
         return redirect(url_for('index'))
 
     return render_template('register.html')
 
 @app.route('/refresh/<int:user_id>')
+@login_required
 def refresh(user_id):
     user = User.query.get_or_404(user_id)
     data = fetch_user_data(user.profile_url, user.platform)
@@ -109,30 +180,37 @@ def refresh(user_id):
         user.total_contests = data.get('total_contests', 0)
         user.last_updated = datetime.utcnow()
         db.session.commit()
-        update_excel(User.query.all())
+        account_users = User.query.filter_by(account_id=session.get('account_id')).all()
+        update_excel(account_users)
         flash(f'Updated data for {user.name}', 'success')
     else:
         flash('Failed to update data.', 'danger')
     return redirect(url_for('index'))
 
 @app.route('/delete/<int:user_id>')
+@login_required
 def delete_user(user_id):
     user = User.query.get_or_404(user_id)
     name = user.name
     db.session.delete(user)
     db.session.commit()
     # Update Excel after deletion
-    update_excel(User.query.all())
+    account_users = User.query.filter_by(account_id=session.get('account_id')).all()
+    update_excel(account_users)
     flash(f'User {name} deleted successfully.', 'success')
     return redirect(url_for('index'))
 
 @app.route('/download')
+@login_required
 def download():
+    # Always regenerate the Excel file fresh with the current user's data
+    account_users = User.query.filter_by(account_id=session.get('account_id')).all()
+    if not account_users:
+        flash('No profiles added yet. Add some platform profiles first.', 'info')
+        return redirect(url_for('index'))
+    update_excel(account_users)
     path = get_excel_path()
-    if os.path.exists(path):
-        return send_file(path, as_attachment=True)
-    flash('Excel file not generated yet.', 'info')
-    return redirect(url_for('index'))
+    return send_file(path, as_attachment=True, download_name=f"{session.get('username', 'export')}_scores.xlsx")
 
 if __name__ == '__main__':
     # Setup scheduler only when running locally (not under gunicorn)
