@@ -38,11 +38,3 @@ class Account(db.Model):
     email = db.Column(db.String(120), nullable=False, unique=True)
     password_hash = db.Column(db.String(255), nullable=False)
     users = db.relationship('User', backref='account', lazy=True)
-
-    def to_dict(self):
-        return {
-            "id": self.id,
-            "username": self.username,
-            "email": self.email,
-            "users": [u.to_dict() for u in self.users]
-        }

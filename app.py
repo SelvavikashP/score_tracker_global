@@ -8,31 +8,24 @@ import json
 from datetime import datetime
 from functools import wraps
 from werkzeug.security import generate_password_hash, check_password_hash
-from dotenv import load_dotenv
-
-load_dotenv()
 
 app = Flask(__name__)
 
-# Supabase PostgreSQL — persistent across all devices and deployments
-DATABASE_URL = os.environ.get('DATABASE_URL')
-if not DATABASE_URL:
-    raise RuntimeError("DATABASE_URL environment variable is not set. Add it to your .env file.")
-
-app.config['SQLALCHEMY_DATABASE_URI'] = DATABASE_URL
-app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
-app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'score-tracker-secret-key-2026')
-
-db.init_app(app)
-
-# ── User_data directory for offline copies ──────────────────────────────
+# Use /tmp for DB on Render and Vercel (read-only filesystem elsewhere)
 if os.environ.get('RENDER') or os.environ.get('VERCEL'):
-    USER_DATA_DIR = '/tmp/User_data'
+    DB_PATH = '/tmp/database.db'
 else:
+    # Store DB in User_data folder locally
     BASE_DIR = os.path.abspath(os.path.dirname(__file__))
     USER_DATA_DIR = os.path.join(BASE_DIR, 'User_data')
+    os.makedirs(USER_DATA_DIR, exist_ok=True)
+    DB_PATH = os.path.join(USER_DATA_DIR, 'database.db')
 
-os.makedirs(USER_DATA_DIR, exist_ok=True)
+app.config['SQLALCHEMY_DATABASE_URI'] = f'sqlite:///{DB_PATH}'
+app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
+app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'default-secure-key')
+
+db.init_app(app)
 
 def login_required(f):
     @wraps(f)
@@ -42,10 +35,9 @@ def login_required(f):
             return redirect(url_for('login'))
         return f(*args, **kwargs)
     return decorated_function
-
 scheduler = APScheduler()
 
-# Ensure DB tables exist when app is imported (works with gunicorn on Render/Vercel)
+# Ensure DB tables exist when app is imported (works with gunicorn on Render)
 with app.app_context():
     db.create_all()
 
@@ -65,39 +57,6 @@ def update_all_users():
         db.session.commit()
         update_excel(users)
         print(f"Daily update completed: {datetime.now()}")
-
-def save_local_snapshot(account_id, username):
-    """Saves a JSON snapshot of the account's profiles to User_data/ (local only)."""
-    try:
-        users = User.query.filter_by(account_id=account_id).all()
-        snapshot = {
-            'username': username,
-            'exported_at': datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
-            'profiles': [u.to_dict() for u in users]
-        }
-        path = os.path.join(USER_DATA_DIR, f'{username}_data.json')
-        with open(path, 'w') as f:
-            json.dump(snapshot, f, indent=2)
-    except Exception as e:
-        print(f'Snapshot error: {e}')
-
-def log_login_event(username, email):
-    """Appends a login event to User_data/login_log.json (local only)."""
-    try:
-        log_path = os.path.join(USER_DATA_DIR, 'login_log.json')
-        events = []
-        if os.path.exists(log_path):
-            with open(log_path, 'r') as f:
-                events = json.load(f)
-        events.append({
-            'username': username,
-            'email': email,
-            'timestamp': datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-        })
-        with open(log_path, 'w') as f:
-            json.dump(events, f, indent=2)
-    except Exception as e:
-        print(f'Login log error: {e}')
 
 @app.route('/')
 @login_required
@@ -134,24 +93,43 @@ def signup():
 
     return render_template('signup.html')
 
+def log_login_event(username, email):
+    """Appends a login event to User_data/login_log.json (local only)."""
+    if os.environ.get('RENDER') or os.environ.get('VERCEL'):
+        return  # Skip local file logging in cloud environments
+    try:
+        BASE_DIR = os.path.abspath(os.path.dirname(__file__))
+        log_path = os.path.join(BASE_DIR, 'User_data', 'login_log.json')
+        events = []
+        if os.path.exists(log_path):
+            with open(log_path, 'r') as f:
+                events = json.load(f)
+        events.append({
+            'username': username,
+            'email': email,
+            'timestamp': datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+        })
+        with open(log_path, 'w') as f:
+            json.dump(events, f, indent=2)
+    except Exception as e:
+        print(f'Login log error: {e}')
+
 @app.route('/login', methods=['GET', 'POST'])
 def login():
     if request.method == 'POST':
         email = request.form.get('email')
         password = request.form.get('password')
-
+        
         account = Account.query.filter_by(email=email).first()
         if account and check_password_hash(account.password_hash, password):
             session['account_id'] = account.id
             session['username'] = account.username
             log_login_event(account.username, account.email)
-            # Save a local snapshot of all profiles after login
-            save_local_snapshot(account.id, account.username)
             flash('Logged in successfully.', 'success')
             return redirect(url_for('index'))
         else:
             flash('Invalid email or password.', 'danger')
-
+            
     return render_template('login.html')
 
 @app.route('/logout')
@@ -173,11 +151,13 @@ def register():
             flash('All fields are required!', 'danger')
             return redirect(url_for('register'))
 
+        # Check if user already exists
         existing_user = User.query.filter_by(profile_url=profile_url).first()
         if existing_user:
             flash('Profile URL already registered!', 'warning')
             return redirect(url_for('register'))
 
+        # Fetch initial data
         data = fetch_user_data(profile_url, platform)
         if not data:
             flash('Invalid Profile URL or could not fetch data.', 'danger')
@@ -198,9 +178,9 @@ def register():
         db.session.add(new_user)
         db.session.commit()
 
+        # Update Excel with only this account's profiles
         account_users = User.query.filter_by(account_id=session.get('account_id')).all()
         update_excel(account_users)
-        save_local_snapshot(session.get('account_id'), session.get('username'))
 
         flash('Registration successful!', 'success')
         return redirect(url_for('index'))
@@ -223,7 +203,6 @@ def refresh(user_id):
         db.session.commit()
         account_users = User.query.filter_by(account_id=session.get('account_id')).all()
         update_excel(account_users)
-        save_local_snapshot(session.get('account_id'), session.get('username'))
         flash(f'Updated data for {user.name}', 'success')
     else:
         flash('Failed to update data.', 'danger')
@@ -248,7 +227,6 @@ def sync_all():
             count += 1
     db.session.commit()
     update_excel(users)
-    save_local_snapshot(account_id, session.get('username'))
     flash(f'Successfully synced {count} profiles.', 'success')
     return redirect(url_for('index'))
 
@@ -259,15 +237,16 @@ def delete_user(user_id):
     name = user.name
     db.session.delete(user)
     db.session.commit()
+    # Update Excel after deletion
     account_users = User.query.filter_by(account_id=session.get('account_id')).all()
     update_excel(account_users)
-    save_local_snapshot(session.get('account_id'), session.get('username'))
     flash(f'User {name} deleted successfully.', 'success')
     return redirect(url_for('index'))
 
 @app.route('/download')
 @login_required
 def download():
+    # Always regenerate the Excel file fresh with the current user's data
     account_users = User.query.filter_by(account_id=session.get('account_id')).all()
     if not account_users:
         flash('No profiles added yet. Add some platform profiles first.', 'info')
@@ -276,27 +255,8 @@ def download():
     path = get_excel_path()
     return send_file(path, as_attachment=True, download_name=f"{session.get('username', 'export')}_scores.xlsx")
 
-@app.route('/delete_account', methods=['GET', 'POST'])
-@login_required
-def delete_account():
-    if request.method == 'POST':
-        account_id = session.get('account_id')
-        # Delete all profiles belonging to this account first
-        User.query.filter_by(account_id=account_id).delete()
-        # Delete the account itself
-        Account.query.filter_by(id=account_id).delete()
-        db.session.commit()
-        # Clear local snapshot file if exists
-        username = session.get('username', '')
-        snap_path = os.path.join(USER_DATA_DIR, f'{username}_data.json')
-        if os.path.exists(snap_path):
-            os.remove(snap_path)
-        session.clear()
-        flash('Your account and all data have been permanently deleted.', 'info')
-        return redirect(url_for('signup'))
-    return render_template('delete_account.html')
-
 if __name__ == '__main__':
+    # Setup scheduler only when running locally (not under gunicorn)
     scheduler.add_job(id='daily_update', func=update_all_users, trigger='interval', days=1)
     scheduler.start()
     app.run(debug=True)
