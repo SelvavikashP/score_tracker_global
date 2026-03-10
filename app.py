@@ -65,9 +65,15 @@ def update_all_users():
 def favicon():
     return send_file(os.path.join(app.root_path, 'static', 'favicon.png'))
 
+@app.route('/health')
+def health():
+    return "OK", 200
+
 @app.route('/')
-@login_required
 def index():
+    if 'account_id' not in session:
+        return render_template('login.html')
+    
     account_id = session.get('account_id')
     users = User.query.filter_by(account_id=account_id).order_by(User.rating.desc()).all()
     logged_in = True
