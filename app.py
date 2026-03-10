@@ -1,15 +1,18 @@
-from flask import Flask, render_template, request, redirect, url_for, flash, session, send_file
+from flask import Flask, render_template, request, redirect, url_for, flash, session, send_file, abort
 from models import db, User, Account
 from api_utils import fetch_user_data
 from excel_utils import update_excel, get_excel_path
 from flask_apscheduler import APScheduler
 import os
 import json
-from datetime import datetime
+from datetime import datetime, timezone
 from functools import wraps
 from werkzeug.security import generate_password_hash, check_password_hash
 
 app = Flask(__name__)
+
+class Config:
+    SCHEDULER_API_ENABLED = False
 
 # Use /tmp for DB on Render and Vercel (read-only filesystem elsewhere)
 if os.environ.get('RENDER') or os.environ.get('VERCEL'):
@@ -53,10 +56,14 @@ def update_all_users():
                 user.country_rank = data.get('country_rank', 0)
                 user.recent_problems = data.get('recent_problems', 0)
                 user.total_contests = data.get('total_contests', 0)
-                user.last_updated = datetime.utcnow()
+                user.last_updated = datetime.now(timezone.utc)
         db.session.commit()
         update_excel(users)
         print(f"Daily update completed: {datetime.now()}")
+
+@app.route('/favicon.ico')
+def favicon():
+    return send_file(os.path.join(app.root_path, 'static', 'favicon.png'))
 
 @app.route('/')
 @login_required
@@ -137,7 +144,7 @@ def logout():
     session.pop('account_id', None)
     session.pop('username', None)
     flash('You have been logged out.', 'info')
-    return redirect(url_for('index'))
+    return redirect(url_for('login'))
 
 @app.route('/register', methods=['GET', 'POST'])
 @login_required
@@ -190,7 +197,9 @@ def register():
 @app.route('/refresh/<int:user_id>')
 @login_required
 def refresh(user_id):
-    user = User.query.get_or_404(user_id)
+    user = db.session.get(User, user_id)
+    if user is None:
+        abort(404)
     data = fetch_user_data(user.profile_url, user.platform)
     if data:
         user.rating = data.get('rating', 0)
@@ -199,7 +208,7 @@ def refresh(user_id):
         user.country_rank = data.get('country_rank', 0)
         user.recent_problems = data.get('recent_problems', 0)
         user.total_contests = data.get('total_contests', 0)
-        user.last_updated = datetime.utcnow()
+        user.last_updated = datetime.now(timezone.utc)
         db.session.commit()
         account_users = User.query.filter_by(account_id=session.get('account_id')).all()
         update_excel(account_users)
@@ -223,7 +232,7 @@ def sync_all():
             user.country_rank = data.get('country_rank', 0)
             user.recent_problems = data.get('recent_problems', 0)
             user.total_contests = data.get('total_contests', 0)
-            user.last_updated = datetime.utcnow()
+            user.last_updated = datetime.now(timezone.utc)
             count += 1
     db.session.commit()
     update_excel(users)
@@ -233,7 +242,9 @@ def sync_all():
 @app.route('/delete/<int:user_id>')
 @login_required
 def delete_user(user_id):
-    user = User.query.get_or_404(user_id)
+    user = db.session.get(User, user_id)
+    if user is None:
+        abort(404)
     name = user.name
     db.session.delete(user)
     db.session.commit()
@@ -256,7 +267,9 @@ def download():
     return send_file(path, as_attachment=True, download_name=f"{session.get('username', 'export')}_scores.xlsx")
 
 if __name__ == '__main__':
+    app.config.from_object(Config)
     # Setup scheduler only when running locally (not under gunicorn)
     scheduler.add_job(id='daily_update', func=update_all_users, trigger='interval', days=1)
+    scheduler.init_app(app)
     scheduler.start()
     app.run(debug=True)

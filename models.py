@@ -1,5 +1,5 @@
 from flask_sqlalchemy import SQLAlchemy
-from datetime import datetime
+from datetime import datetime, timezone
 
 db = SQLAlchemy()
 
@@ -15,7 +15,7 @@ class User(db.Model):
     country_rank = db.Column(db.Integer, default=0)
     recent_problems = db.Column(db.Integer, default=0)
     total_contests = db.Column(db.Integer, default=0)
-    last_updated = db.Column(db.DateTime, default=datetime.utcnow)
+    last_updated = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc))
 
     def to_dict(self):
         return {

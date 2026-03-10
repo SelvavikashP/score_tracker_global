@@ -14,14 +14,13 @@
                 <form method="POST" action="{{ url_for('register') }}">
                     <div class="mb-4">
                         <label for="name" class="form-label fw-600">Full Name</label>
-                        <input type="text" class="form-control form-control-lg bg-light border-0" id="name" name="name"
-                            placeholder="e.g. Gennady Korotkevich" required>
+                        <input type="text" class="form-control" id="name" name="name"
+                            placeholder="e.g. Gennady Korotkevich" required autocomplete="name">
                     </div>
 
                     <div class="mb-4">
                         <label for="platform" class="form-label fw-600">Select Platform</label>
-                        <select class="form-select form-control-lg bg-light border-0" id="platform" name="platform"
-                            required>
+                        <select class="form-control" id="platform" name="platform" required>
                             <option value="Codeforces">Codeforces</option>
                             <option value="LeetCode">LeetCode</option>
                             <option value="CodeChef">CodeChef</option>
@@ -32,8 +31,8 @@
 
                     <div class="mb-5">
                         <label for="profile_url" class="form-label fw-600">Profile URL / Handle</label>
-                        <input type="text" class="form-control form-control-lg bg-light border-0" id="profile_url"
-                            name="profile_url" placeholder="https://codeforces.com/profile/tourist" required>
+                        <input type="text" class="form-control" id="profile_url" name="profile_url"
+                            placeholder="https://codeforces.com/profile/tourist" required autocomplete="url">
                         <div class="form-text mt-2">
                             <i class="fas fa-info-circle me-1"></i>You can provide the full URL or just your username.
                         </div>

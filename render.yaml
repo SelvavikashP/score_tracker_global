@@ -1,7 +1,13 @@
 services:
-  - type: static
-    name: score_tracker_global
-    env: static
-    buildCommand: "" # No build step needed for plain HTML
-    publishPath: ./
+  - type: web
+    name: score-tracker-global
+    env: python
+    region: oregon
     plan: free
+    buildCommand: pip install -r requirements.txt
+    startCommand: gunicorn app:app
+    envVars:
+      - key: SECRET_KEY
+        generateValue: true
+      - key: PYTHON_VERSION
+        value: 3.10.0
