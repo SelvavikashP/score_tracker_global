@@ -1,0 +1,90 @@
+{% extends "layout.html" %}
+
+{% block title %}System Audit Logs — Admin Portal{% endblock %}
+
+{% block content %}
+<div class="row align-items-center mb-4 g-3">
+    <div class="col-lg-7">
+        <div class="d-flex align-items-center gap-2 mb-1">
+            <a href="{{ url_for('admin_dashboard') }}" class="btn btn-sm btn-outline-custom p-1 px-2" title="Back to Admin Portal">
+                <i class="fas fa-arrow-left"></i>
+            </a>
+            <span class="badge bg-secondary-subtle text-secondary fw-bold px-3 py-1 rounded-pill">Audit Trail</span>
+        </div>
+        <h1 class="fw-black mb-1 display-6">System Audit Logs</h1>
+        <p class="text-secondary small mb-0">Immutable compliance log recording security events, authentication, and modifications</p>
+    </div>
+    <div class="col-lg-5 text-lg-end">
+        <input type="text" id="auditSearch" class="form-control form-control-sm ms-auto" placeholder="Filter audit records..." style="max-width: 260px;">
+    </div>
+</div>
+
+<!-- Logs Table Card -->
+<div class="glass-card p-4">
+    <div class="table-responsive">
+        <table class="table table-custom align-middle" id="auditTable">
+            <thead>
+                <tr>
+                    <th class="ps-3" style="width: 180px;">Timestamp</th>
+                    <th>Event Type</th>
+                    <th>Actor</th>
+                    <th>Target</th>
+                    <th>Description</th>
+                    <th class="text-end pe-3">IP Address</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for log in logs %}
+                <tr class="audit-row" data-search="{{ log.event_type|lower }} {{ log.description|lower }} {{ log.actor.username|lower if log.actor else '' }}">
+                    <td class="ps-3 text-muted small">{{ log.created_at.strftime('%Y-%m-%d %H:%M:%S') }}</td>
+                    <td>
+                        <span class="badge bg-dark border border-secondary text-info">{{ log.event_type }}</span>
+                    </td>
+                    <td>
+                        {% if log.actor %}
+                        <span class="fw-bold text-white">{{ log.actor.username }}</span>
+                        <span class="badge-role badge-role-{{ log.actor.role }} ms-1">{{ log.actor.role }}</span>
+                        {% else %}
+                        <span class="text-muted small">System / Anonymous</span>
+                        {% endif %}
+                    </td>
+                    <td>
+                        {% if log.target_type %}
+                        <span class="badge bg-dark border border-secondary text-secondary small">
+                            {{ log.target_type }} #{{ log.target_id }}
+                        </span>
+                        {% else %}
+                        <span class="text-muted small">-</span>
+                        {% endif %}
+                    </td>
+                    <td class="text-secondary small">{{ log.description }}</td>
+                    <td class="text-end pe-3 text-muted small">{{ log.ip_address or 'Local' }}</td>
+                </tr>
+                {% else %}
+                <tr>
+                    <td colspan="6" class="text-center py-4 text-muted">No audit events recorded.</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    document.addEventListener('DOMContentLoaded', () => {
+        const searchInput = document.getElementById('auditSearch');
+        if (searchInput) {
+            searchInput.addEventListener('input', (e) => {
+                const query = e.target.value.toLowerCase().trim();
+                const rows = document.querySelectorAll('.audit-row');
+                rows.forEach(row => {
+                    const text = row.getAttribute('data-search') || '';
+                    row.style.display = text.includes(query) ? '' : 'none';
+                });
+            });
+        }
+    });
+</script>
+{% endblock %}

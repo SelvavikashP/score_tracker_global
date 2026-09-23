@@ -1,0 +1,567 @@
+{% extends "layout.html" %}
+
+{% block title %}Staff Portal — Dashboard{% endblock %}
+
+{% block content %}
+<div class="row align-items-center mb-4 g-3">
+    <div class="col-lg-7">
+        <span class="badge bg-purple-subtle text-purple mb-1 fw-bold px-3 py-1 rounded-pill" style="background: rgba(139, 92, 246, 0.15); color: #a78bfa;">Staff / Teacher Portal</span>
+        <h1 class="fw-black mb-1 display-6">Classroom Management</h1>
+        <p class="text-secondary small mb-0">Welcome back, <strong>{{ staff.full_name or staff.username }}</strong> &bull; Monitor and manage your student cohorts</p>
+    </div>
+    <div class="col-lg-5 text-lg-end">
+        <div class="d-flex flex-wrap gap-2 justify-content-lg-end">
+            <button class="btn btn-outline-custom" data-bs-toggle="modal" data-bs-target="#createStudentModal">
+                <i class="fas fa-user-plus text-primary me-1"></i>Provision Student User
+            </button>
+            <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#createClassroomModal">
+                <i class="fas fa-plus me-1"></i>Create Classroom
+            </button>
+        </div>
+    </div>
+</div>
+
+<!-- Interactive Quick Metric Cards -->
+<div class="row g-3 mb-4">
+    <div class="col-12 col-sm-6 col-lg-3">
+        <a href="#classroomsSection" class="stat-card stat-card-clickable text-decoration-none" title="View your classrooms">
+            <div class="d-flex justify-content-between align-items-center">
+                <div class="text-muted small fw-bold text-uppercase" style="letter-spacing: 0.5px;">My Classrooms</div>
+                <span class="badge bg-purple-subtle text-purple stat-card-hint" style="color: #c084fc;"><i class="fas fa-arrow-down me-1"></i>View Below</span>
+            </div>
+            <div class="fs-3 fw-bold text-white mt-1">{{ classrooms|length }}</div>
+            <div class="stat-icon" style="background: rgba(139, 92, 246, 0.15); color: #a78bfa;">
+                <i class="fas fa-chalkboard-user"></i>
+            </div>
+        </a>
+    </div>
+    <div class="col-12 col-sm-6 col-lg-3">
+        <button type="button" class="stat-card stat-card-clickable" data-bs-toggle="modal" data-bs-target="#staffStudentsModal" title="Click to view enrolled student roster">
+            <div class="d-flex justify-content-between align-items-center">
+                <div class="text-muted small fw-bold text-uppercase" style="letter-spacing: 0.5px;">Total Students</div>
+                <span class="badge bg-primary-subtle text-primary stat-card-hint"><i class="fas fa-list-ul me-1"></i>View Roster</span>
+            </div>
+            <div class="fs-3 fw-bold text-white mt-1">{{ total_students }}</div>
+            <div class="stat-icon" style="background: rgba(59, 130, 246, 0.15); color: #60a5fa;">
+                <i class="fas fa-user-graduate"></i>
+            </div>
+        </button>
+    </div>
+    <div class="col-12 col-sm-6 col-lg-3">
+        <button type="button" class="stat-card stat-card-clickable" data-bs-toggle="modal" data-bs-target="#staffProfilesModal" title="Click to view tracked platform profiles">
+            <div class="d-flex justify-content-between align-items-center">
+                <div class="text-muted small fw-bold text-uppercase" style="letter-spacing: 0.5px;">Tracked Profiles</div>
+                <span class="badge bg-success-subtle text-success stat-card-hint"><i class="fas fa-list-ul me-1"></i>View Handles</span>
+            </div>
+            <div class="fs-3 fw-bold text-white mt-1">{{ total_profiles }}</div>
+            <div class="stat-icon" style="background: rgba(16, 185, 129, 0.15); color: #34d399;">
+                <i class="fas fa-laptop-code"></i>
+            </div>
+        </button>
+    </div>
+    <div class="col-12 col-sm-6 col-lg-3">
+        <button type="button" class="stat-card stat-card-clickable" data-bs-toggle="modal" data-bs-target="#staffRemovalsModal" title="Click to review removal requests for your classrooms">
+            <div class="d-flex justify-content-between align-items-center">
+                <div class="text-muted small fw-bold text-uppercase" style="letter-spacing: 0.5px;">Pending Removals</div>
+                {% if pending_removals_count > 0 %}
+                <span class="badge bg-warning text-dark stat-card-hint"><i class="fas fa-clock me-1"></i>Pending</span>
+                {% else %}
+                <span class="badge bg-secondary text-light stat-card-hint"><i class="fas fa-list-ul me-1"></i>View Log</span>
+                {% endif %}
+            </div>
+            <div class="fs-3 fw-bold text-white mt-1">{{ pending_removals_count }}</div>
+            <div class="stat-icon" style="background: rgba(245, 158, 11, 0.15); color: #fbbf24;">
+                <i class="fas fa-user-clock"></i>
+            </div>
+        </button>
+    </div>
+</div>
+
+<!-- Classrooms Grid Section -->
+<div class="mb-5" id="classroomsSection">
+    <div class="d-flex justify-content-between align-items-center mb-3">
+        <h4 class="fw-bold mb-0 text-white"><i class="fas fa-chalkboard me-2 text-purple" style="color: #a78bfa;"></i>Your Created Classrooms</h4>
+        <button class="btn btn-sm btn-outline-custom" data-bs-toggle="modal" data-bs-target="#createClassroomModal">
+            <i class="fas fa-plus me-1"></i>New Cohort
+        </button>
+    </div>
+
+    <div class="row g-3">
+        {% for c in classrooms %}
+        <div class="col-12 col-md-6 col-xl-4">
+            <div class="glass-card p-4 h-100 d-flex flex-column justify-content-between">
+                <div>
+                    <div class="d-flex justify-content-between align-items-start mb-2">
+                        <h5 class="fw-bold text-white mb-0">{{ c.name }}</h5>
+                        <span class="badge bg-dark border border-secondary text-info small">
+                            {{ c.active_students_count() }} Students
+                        </span>
+                    </div>
+
+                    {% if c.description %}
+                    <p class="text-secondary small mb-3">{{ c.description }}</p>
+                    {% else %}
+                    <p class="text-muted small mb-3 fst-italic">No description provided.</p>
+                    {% endif %}
+                </div>
+
+                <div>
+                    <div class="d-flex flex-wrap gap-2 pt-3 border-top" style="border-color: var(--border-subtle) !important;">
+                        <a href="{{ url_for('staff_classroom_detail', classroom_id=c.id) }}" class="btn btn-sm btn-primary flex-grow-1">
+                            <i class="fas fa-users-viewfinder me-1"></i>Manage Roster
+                        </a>
+                        <a href="{{ url_for('staff_classroom_leaderboard', classroom_id=c.id) }}" class="btn btn-sm btn-outline-custom" title="View Classroom Leaderboard">
+                            <i class="fas fa-trophy text-warning"></i>
+                        </a>
+                        <a href="{{ url_for('download_classroom_report', classroom_id=c.id) }}" class="btn btn-sm btn-outline-custom" title="Export Excel Report">
+                            <i class="fas fa-file-excel text-success"></i>
+                        </a>
+                    </div>
+                </div>
+            </div>
+        </div>
+        {% else %}
+        <div class="col-12">
+            <div class="glass-card p-5 text-center">
+                <div class="brand-icon mx-auto mb-3" style="width: 56px; height: 56px; font-size: 1.5rem; background: rgba(139, 92, 246, 0.15); color: #a78bfa;">
+                    <i class="fas fa-chalkboard"></i>
+                </div>
+                <h4 class="fw-bold text-white mb-2">No Classrooms Created Yet</h4>
+                <p class="text-secondary mb-4" style="max-width: 420px; margin: 0 auto;">Create your first classroom cohort to invite students, monitor their competitive programming performance, and generate leaderboards.</p>
+                <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#createClassroomModal">
+                    <i class="fas fa-plus me-1"></i>Create Classroom
+                </button>
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+</div>
+
+<!-- Pending Approvals & Removal Requests Section (Scoped to Classroom Creator) -->
+<div class="glass-card p-4 mb-4" id="staffApprovalQueueSection">
+    <div class="d-flex justify-content-between align-items-center mb-3">
+        <div>
+            <h5 class="fw-bold text-white mb-0">
+                <i class="fas fa-clock-rotate-left text-warning me-2"></i>Pending Approvals &amp; Removal Requests
+            </h5>
+            <small class="text-secondary">Track the administrative review status of student removal requests submitted for your classrooms</small>
+        </div>
+        <div>
+            {% if pending_removals_count > 0 %}
+            <span class="badge bg-warning text-dark fw-bold px-3 py-1 rounded-pill">{{ pending_removals_count }} Awaiting Admin Approval</span>
+            {% else %}
+            <span class="badge bg-success-subtle text-success fw-bold px-3 py-1 rounded-pill"><i class="fas fa-check-circle me-1"></i>No Pending Removals</span>
+            {% endif %}
+        </div>
+    </div>
+
+    {% if all_removal_requests and all_removal_requests|length > 0 %}
+    <div class="table-responsive">
+        <table class="table table-custom align-middle mb-0">
+            <thead>
+                <tr>
+                    <th class="ps-3">Submitted</th>
+                    <th>Classroom</th>
+                    <th>Student Name</th>
+                    <th>Reason</th>
+                    <th>Approval Status</th>
+                    <th class="text-end pe-3">Reviewed By</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for req in all_removal_requests %}
+                <tr>
+                    <td class="ps-3 text-muted small">{{ req.created_at.strftime('%Y-%m-%d %H:%M') }}</td>
+                    <td>
+                        <span class="badge bg-dark border border-secondary text-info">{{ req.classroom.name }}</span>
+                    </td>
+                    <td>
+                        <span class="fw-bold text-white">{{ req.student_member.full_name or req.student_member.username }}</span>
+                        <div class="text-muted small">@{{ req.student_member.username }} &bull; {{ req.student_member.email }}</div>
+                    </td>
+                    <td>
+                        <span class="text-secondary small fst-italic">"{{ req.reason }}"</span>
+                    </td>
+                    <td>
+                        {% if req.status == 'pending' %}
+                        <span class="badge bg-warning text-dark fw-bold"><i class="fas fa-hourglass-half me-1"></i>Pending Admin Approval</span>
+                        {% elif req.status == 'approved' %}
+                        <span class="badge bg-success-subtle text-success fw-bold"><i class="fas fa-check-circle me-1"></i>Approved &amp; Removed</span>
+                        {% else %}
+                        <span class="badge bg-danger-subtle text-danger fw-bold"><i class="fas fa-times-circle me-1"></i>Rejected</span>
+                        {% endif %}
+                    </td>
+                    <td class="text-end pe-3">
+                        {% if req.reviewer %}
+                        <span class="text-white small fw-bold">{{ req.reviewer.username }}</span>
+                        <div class="text-muted small">{{ req.reviewed_at.strftime('%Y-%m-%d') if req.reviewed_at else '' }}</div>
+                        {% else %}
+                        <span class="text-muted small fst-italic">In Admin Queue</span>
+                        {% endif %}
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% else %}
+    <div class="p-4 text-center text-muted border border-dashed rounded-3" style="border-color: var(--border-subtle) !important;">
+        <i class="fas fa-user-check fs-2 text-secondary mb-2 opacity-50"></i>
+        <div class="fw-bold text-white mb-1">No Student Removal Requests</div>
+        <div class="small text-secondary">No removal requests have been submitted for your classroom cohorts. You can request student removal from any classroom roster page.</div>
+    </div>
+    {% endif %}
+</div>
+
+<!-- ========================================================================= -->
+<!-- STAFF STAT CARD MODALS -->
+<!-- ========================================================================= -->
+
+<!-- 1. Enrolled Students Modal -->
+<div class="modal fade" id="staffStudentsModal" tabindex="-1" aria-labelledby="staffStudentsModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered modal-xl">
+        <div class="modal-content glass-card border-0" style="background: var(--bg-card) !important;">
+            <div class="modal-header border-bottom" style="border-color: var(--border-subtle) !important;">
+                <div class="d-flex align-items-center gap-2">
+                    <div class="stat-icon position-static d-inline-flex" style="background: rgba(59, 130, 246, 0.15); color: #60a5fa; width: 38px; height: 38px;">
+                        <i class="fas fa-user-graduate"></i>
+                    </div>
+                    <div>
+                        <h5 class="modal-title fw-bold text-white mb-0" id="staffStudentsModalLabel">Enrolled Cohort Students</h5>
+                        <small class="text-secondary">Students actively enrolled across your classrooms ({{ total_students }} total)</small>
+                    </div>
+                </div>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body p-4">
+                <div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
+                    <input type="text" class="form-control form-control-sm w-auto flex-grow-1" id="staffStudentSearch" placeholder="🔍 Search students by name, username, or email..." onkeyup="filterStaffModalTable('staffStudentSearch', 'staffStudentTable')">
+                    <button class="btn btn-sm btn-primary" data-bs-toggle="modal" data-bs-target="#createStudentModal">
+                        <i class="fas fa-user-plus me-1"></i>Provision New Student
+                    </button>
+                </div>
+                <div class="table-responsive" style="max-height: 480px; overflow-y: auto;">
+                    <table class="table table-custom align-middle mb-0" id="staffStudentTable">
+                        <thead>
+                            <tr>
+                                <th class="ps-3">Student</th>
+                                <th>Email</th>
+                                <th>Classroom(s)</th>
+                                <th>Profiles</th>
+                                <th>Status</th>
+                                <th class="text-end pe-3">Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for s in students_list %}
+                            <tr>
+                                <td class="ps-3">
+                                    <div class="d-flex align-items-center gap-2">
+                                        <div class="rounded-circle d-flex align-items-center justify-content-center fw-bold text-white" style="width: 34px; height: 34px; background: rgba(59, 130, 246, 0.25); border: 1px solid rgba(59, 130, 246, 0.4); font-size: 0.85rem;">
+                                            {{ (s.full_name or s.username)[:2]|upper }}
+                                        </div>
+                                        <div>
+                                            <span class="fw-bold text-white">{{ s.full_name or s.username }}</span>
+                                            <div class="text-muted small">@{{ s.username }}</div>
+                                        </div>
+                                    </div>
+                                </td>
+                                <td class="text-secondary small">{{ s.email }}</td>
+                                <td>
+                                    {% set cohorts = student_classrooms_map.get(s.id, []) %}
+                                    {% for cname in cohorts %}
+                                    <span class="badge bg-dark border border-secondary text-info me-1">{{ cname }}</span>
+                                    {% else %}
+                                    <span class="text-muted small">Unassigned</span>
+                                    {% endfor %}
+                                </td>
+                                <td>
+                                    <span class="badge bg-dark border border-secondary text-purple" style="color: #c084fc;">
+                                        {{ s.platform_profiles.count() if s.platform_profiles else 0 }} Handles
+                                    </span>
+                                </td>
+                                <td>
+                                    {% if s.is_active %}
+                                    <span class="badge bg-success-subtle text-success fw-bold">Active</span>
+                                    {% else %}
+                                    <span class="badge bg-danger-subtle text-danger fw-bold">Inactive</span>
+                                    {% endif %}
+                                </td>
+                                <td class="text-end pe-3">
+                                    <a href="{{ url_for('staff_student_detail', student_id=s.id) }}" class="btn btn-sm btn-outline-custom" title="View Student Performance">
+                                        <i class="fas fa-chart-line text-info me-1"></i>Performance
+                                    </a>
+                                </td>
+                            </tr>
+                            {% else %}
+                            <tr>
+                                <td colspan="6" class="text-center py-4 text-muted">No students enrolled in your classrooms yet.</td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+            <div class="modal-footer border-top" style="border-color: var(--border-subtle) !important;">
+                <button type="button" class="btn btn-outline-custom" data-bs-dismiss="modal">Close</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- 2. Tracked Platform Profiles Modal -->
+<div class="modal fade" id="staffProfilesModal" tabindex="-1" aria-labelledby="staffProfilesModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered modal-xl">
+        <div class="modal-content glass-card border-0" style="background: var(--bg-card) !important;">
+            <div class="modal-header border-bottom" style="border-color: var(--border-subtle) !important;">
+                <div class="d-flex align-items-center gap-2">
+                    <div class="stat-icon position-static d-inline-flex" style="background: rgba(16, 185, 129, 0.15); color: #34d399; width: 38px; height: 38px;">
+                        <i class="fas fa-laptop-code"></i>
+                    </div>
+                    <div>
+                        <h5 class="modal-title fw-bold text-white mb-0" id="staffProfilesModalLabel">Tracked Competitive Programming Profiles</h5>
+                        <small class="text-secondary">Synchronized coding accounts across your classroom students ({{ total_profiles }} total)</small>
+                    </div>
+                </div>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body p-4">
+                <div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
+                    <input type="text" class="form-control form-control-sm w-auto flex-grow-1" id="staffProfileSearch" placeholder="🔍 Search profiles by handle, student, or platform..." onkeyup="filterStaffModalTable('staffProfileSearch', 'staffProfileTable')">
+                </div>
+                <div class="table-responsive" style="max-height: 480px; overflow-y: auto;">
+                    <table class="table table-custom align-middle mb-0" id="staffProfileTable">
+                        <thead>
+                            <tr>
+                                <th class="ps-3">Student</th>
+                                <th>Platform</th>
+                                <th>Handle / Username</th>
+                                <th>Rating</th>
+                                <th>Problems Solved</th>
+                                <th>Total Contests</th>
+                                <th class="text-end pe-3">Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for p in profiles_list %}
+                            <tr>
+                                <td class="ps-3">
+                                    <span class="fw-bold text-white">{{ p.user.full_name or p.user.username if p.user else 'Student #' ~ p.user_id }}</span>
+                                    <div class="text-muted small">@{{ p.user.username if p.user else '' }}</div>
+                                </td>
+                                <td>
+                                    <span class="badge bg-dark border border-secondary text-info text-capitalize">{{ p.platform }}</span>
+                                </td>
+                                <td>
+                                    <span class="fw-bold text-white">{{ p.handle }}</span>
+                                </td>
+                                <td>
+                                    <span class="fw-bold text-success">{{ p.rating }}</span>
+                                </td>
+                                <td>
+                                    <span class="text-white">{{ p.recent_problems }}</span>
+                                </td>
+                                <td>
+                                    <span class="text-secondary">{{ p.total_contests }}</span>
+                                </td>
+                                <td class="text-end pe-3">
+                                    <a href="{{ url_for('staff_student_detail', student_id=p.user_id) }}" class="btn btn-sm btn-outline-custom" title="View Student Detail">
+                                        <i class="fas fa-chart-simple text-primary"></i>
+                                    </a>
+                                </td>
+                            </tr>
+                            {% else %}
+                            <tr>
+                                <td colspan="7" class="text-center py-4 text-muted">No competitive programming profiles tracked for your students yet.</td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+            <div class="modal-footer border-top" style="border-color: var(--border-subtle) !important;">
+                <button type="button" class="btn btn-outline-custom" data-bs-dismiss="modal">Close</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- 3. Staff Pending Removals Modal -->
+<div class="modal fade" id="staffRemovalsModal" tabindex="-1" aria-labelledby="staffRemovalsModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered modal-xl">
+        <div class="modal-content glass-card border-0" style="background: var(--bg-card) !important;">
+            <div class="modal-header border-bottom" style="border-color: var(--border-subtle) !important;">
+                <div class="d-flex align-items-center gap-2">
+                    <div class="stat-icon position-static d-inline-flex" style="background: rgba(245, 158, 11, 0.15); color: #fbbf24; width: 38px; height: 38px;">
+                        <i class="fas fa-user-clock"></i>
+                    </div>
+                    <div>
+                        <h5 class="modal-title fw-bold text-white mb-0" id="staffRemovalsModalLabel">Removal Requests Status</h5>
+                        <small class="text-secondary">Student removal requests submitted for your classrooms ({{ pending_removals_count }} pending)</small>
+                    </div>
+                </div>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body p-4">
+                <div class="table-responsive" style="max-height: 480px; overflow-y: auto;">
+                    <table class="table table-custom align-middle mb-0">
+                        <thead>
+                            <tr>
+                                <th class="ps-3">Submitted</th>
+                                <th>Classroom</th>
+                                <th>Student</th>
+                                <th>Reason</th>
+                                <th>Approval Status</th>
+                                <th class="text-end pe-3">Notes</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for req in all_removal_requests %}
+                            <tr>
+                                <td class="ps-3 text-muted small">{{ req.created_at.strftime('%Y-%m-%d %H:%M') }}</td>
+                                <td>
+                                    <span class="badge bg-dark border border-secondary text-info">{{ req.classroom.name }}</span>
+                                </td>
+                                <td>
+                                    <span class="fw-bold text-white">{{ req.student_member.full_name or req.student_member.username }}</span>
+                                    <div class="text-muted small">{{ req.student_member.email }}</div>
+                                </td>
+                                <td>
+                                    <span class="text-secondary small fst-italic">"{{ req.reason }}"</span>
+                                </td>
+                                <td>
+                                    {% if req.status == 'pending' %}
+                                    <span class="badge bg-warning text-dark fw-bold"><i class="fas fa-hourglass-half me-1"></i>Pending Admin Approval</span>
+                                    {% elif req.status == 'approved' %}
+                                    <span class="badge bg-success-subtle text-success fw-bold"><i class="fas fa-check-circle me-1"></i>Approved</span>
+                                    {% else %}
+                                    <span class="badge bg-danger-subtle text-danger fw-bold"><i class="fas fa-times-circle me-1"></i>Rejected</span>
+                                    {% endif %}
+                                </td>
+                                <td class="text-end pe-3 text-secondary small">
+                                    {% if req.reviewer %}
+                                    Reviewed by {{ req.reviewer.username }}
+                                    {% else %}
+                                    <span class="text-muted fst-italic">Awaiting Admin Action</span>
+                                    {% endif %}
+                                </td>
+                            </tr>
+                            {% else %}
+                            <tr>
+                                <td colspan="6" class="text-center py-4 text-muted">No student removal requests submitted for your cohorts.</td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+            <div class="modal-footer border-top" style="border-color: var(--border-subtle) !important;">
+                <button type="button" class="btn btn-outline-custom" data-bs-dismiss="modal">Close</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Create Classroom Modal -->
+<div class="modal fade" id="createClassroomModal" tabindex="-1" aria-labelledby="createClassroomModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content glass-card border-0" style="background: var(--bg-card) !important;">
+            <div class="modal-header border-bottom" style="border-color: var(--border-subtle) !important;">
+                <h5 class="modal-title fw-bold text-white" id="createClassroomModalLabel">
+                    <i class="fas fa-plus text-primary me-2"></i>Create New Classroom
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <form method="POST" action="{{ url_for('staff_classroom_create') }}">
+                <div class="modal-body p-4">
+                    <div class="mb-3">
+                        <label for="className" class="form-label">Classroom / Batch Name</label>
+                        <input type="text" class="form-control" id="className" name="name" placeholder="e.g. Python Batch 2026-A" required autofocus>
+                    </div>
+
+                    <div class="mb-3">
+                        <label for="classDesc" class="form-label">Description (Optional)</label>
+                        <textarea class="form-control" id="classDesc" name="description" rows="3" placeholder="Brief note about this cohort..."></textarea>
+                    </div>
+                </div>
+                <div class="modal-footer border-top" style="border-color: var(--border-subtle) !important;">
+                    <button type="button" class="btn btn-outline-custom" data-bs-dismiss="modal">Cancel</button>
+                    <button type="submit" class="btn btn-primary">Create &amp; Generate Join Link</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- Provision Student Account Modal -->
+<div class="modal fade" id="createStudentModal" tabindex="-1" aria-labelledby="createStudentModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content glass-card border-0" style="background: var(--bg-card) !important;">
+            <div class="modal-header border-bottom" style="border-color: var(--border-subtle) !important;">
+                <h5 class="modal-title fw-bold text-white" id="createStudentModalLabel">
+                    <i class="fas fa-user-plus text-primary me-2"></i>Provision Student User Account
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <form method="POST" action="{{ url_for('staff_create_student_user') }}">
+                <div class="modal-body p-4">
+                    <div class="mb-3">
+                        <label for="studentFullName" class="form-label">Full Name</label>
+                        <input type="text" class="form-control" id="studentFullName" name="full_name" placeholder="e.g. Maya Lin" required autofocus>
+                    </div>
+
+                    <div class="mb-3">
+                        <label for="studentUsername" class="form-label">Username</label>
+                        <input type="text" class="form-control" id="studentUsername" name="username" placeholder="e.g. maya_lin" required>
+                    </div>
+
+                    <div class="mb-3">
+                        <label for="studentId" class="form-label">Student ID / Roll No. (Optional)</label>
+                        <input type="text" class="form-control" id="studentId" name="student_identifier" placeholder="e.g. 2026-CS-088">
+                    </div>
+
+                    <div class="mb-3">
+                        <label for="studentEmail" class="form-label">Email Address</label>
+                        <input type="email" class="form-control" id="studentEmail" name="email" placeholder="maya.lin@university.edu" required>
+                    </div>
+
+                    <div class="mb-3">
+                        <label for="studentPassword" class="form-label">Initial Password</label>
+                        <input type="password" class="form-control" id="studentPassword" name="password" placeholder="At least 6 characters" required minlength="6">
+                    </div>
+
+                    <div class="mb-3">
+                        <label for="studentClassroom" class="form-label">Assign to Classroom (Optional)</label>
+                        <select class="form-select" id="studentClassroom" name="classroom_id">
+                            <option value="">-- Do not enroll into a classroom right now --</option>
+                            {% for c in classrooms %}
+                            <option value="{{ c.id }}">{{ c.name }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                </div>
+                <div class="modal-footer border-top" style="border-color: var(--border-subtle) !important;">
+                    <button type="button" class="btn btn-outline-custom" data-bs-dismiss="modal">Cancel</button>
+                    <button type="submit" class="btn btn-primary">
+                        <i class="fas fa-user-check me-1"></i>Create Student User
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<script>
+function filterStaffModalTable(inputId, tableId) {
+    const input = document.getElementById(inputId);
+    const filter = input.value.toLowerCase();
+    const table = document.getElementById(tableId);
+    const trs = table.getElementsByTagName('tr');
+
+    for (let i = 1; i < trs.length; i++) {
+        const text = trs[i].innerText.toLowerCase();
+        trs[i].style.display = text.includes(filter) ? '' : 'none';
+    }
+}
+</script>
+{% endblock %}

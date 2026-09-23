@@ -1,0 +1,18 @@
+{% extends "layout.html" %}
+
+{% block title %}{{ error_code }} — Global Score Tracker{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center align-items-center" style="min-height: 65vh;">
+    <div class="col-11 col-sm-9 col-md-7 col-lg-5 text-center">
+        <div class="glass-card p-5">
+            <div class="display-1 fw-black text-primary mb-2">{{ error_code }}</div>
+            <h3 class="fw-bold text-white mb-2">{{ error_title }}</h3>
+            <p class="text-secondary small mb-4">{{ error_message }}</p>
+            <a href="{{ url_for('index') }}" class="btn btn-primary">
+                <i class="fas fa-home me-1"></i>Return to Portal
+            </a>
+        </div>
+    </div>
+</div>
+{% endblock %}

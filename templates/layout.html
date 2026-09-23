@@ -1,0 +1,224 @@
+<!DOCTYPE html>
+<html lang="en" data-bs-theme="dark">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}Global Platform Score Tracker{% endblock %}</title>
+    <!-- Bootstrap 5.3 CSS -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+    <!-- Font Awesome 6 -->
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css" rel="stylesheet">
+    <!-- Google Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800;900&family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <!-- Theme & Responsive CSS -->
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/theme.css') }}">
+    <link rel="icon" type="image/png" href="{{ url_for('static', filename='favicon.png') }}">
+    <!-- Chart.js for Performance Analytics -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        .badge-role {
+            font-size: 0.7rem;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            padding: 0.25rem 0.6rem;
+            border-radius: 6px;
+            font-weight: 700;
+        }
+        .badge-role-admin { background: rgba(244, 63, 94, 0.2); color: #fb7185; border: 1px solid rgba(244, 63, 94, 0.4); }
+        .badge-role-staff { background: rgba(139, 92, 246, 0.2); color: #a78bfa; border: 1px solid rgba(139, 92, 246, 0.4); }
+        .badge-role-student { background: rgba(59, 130, 246, 0.2); color: #60a5fa; border: 1px solid rgba(59, 130, 246, 0.4); }
+    </style>
+</head>
+
+<body>
+    <!-- Navigation Bar -->
+    <nav class="navbar navbar-expand-lg navbar-custom sticky-top">
+        <div class="container">
+            <a class="navbar-brand d-flex align-items-center gap-2" href="{{ url_for('index') }}">
+                <div class="brand-icon" style="width: 36px; height: 36px; background: linear-gradient(135deg, #3b82f6, #8b5cf6); border-radius: 8px; display: flex; align-items: center; justify-content: center; color: white;">
+                    <i class="fas fa-trophy"></i>
+                </div>
+                <span class="fw-bold">ScoreTracker<span style="color: var(--accent-blue);">.io</span></span>
+            </a>
+
+            <div class="d-flex align-items-center gap-2 order-lg-last ms-2">
+                <!-- Theme Toggle Button -->
+                <button type="button" class="theme-toggle-btn" title="Toggle Light/Dark Mode" aria-label="Toggle Theme">
+                    <i class="fas fa-moon theme-toggle-icon"></i>
+                </button>
+
+                <button class="navbar-toggler border-0 shadow-none p-1" type="button" data-bs-toggle="collapse" data-bs-target="#navbarMain">
+                    <i class="fas fa-bars fs-4 text-secondary"></i>
+                </button>
+            </div>
+
+            <div class="collapse navbar-collapse" id="navbarMain">
+                <ul class="navbar-nav ms-auto align-items-lg-center gap-1 my-2 my-lg-0">
+                    {% if session.get('user_id') %}
+                        {% set role = session.get('role') %}
+                        {% if role == 'student' %}
+                            <li class="nav-item">
+                                <a class="nav-link" href="{{ url_for('student_dashboard') }}">
+                                    <i class="fas fa-chart-line me-1 text-primary"></i>My Dashboard
+                                </a>
+                            </li>
+                            <li class="nav-item">
+                                <a class="nav-link" href="{{ url_for('public_leaderboard') }}">
+                                    <i class="fas fa-trophy me-1 text-warning"></i>Leaderboard
+                                </a>
+                            </li>
+                        {% elif role == 'staff' %}
+                            <li class="nav-item">
+                                <a class="nav-link" href="{{ url_for('staff_dashboard') }}">
+                                    <i class="fas fa-chalkboard-user me-1 text-primary"></i>Staff Portal
+                                </a>
+                            </li>
+                            <li class="nav-item">
+                                <a class="nav-link" href="{{ url_for('public_leaderboard') }}">
+                                    <i class="fas fa-trophy me-1 text-warning"></i>Leaderboards
+                                </a>
+                            </li>
+                        {% elif role == 'admin' %}
+                            <li class="nav-item">
+                                <a class="nav-link" href="{{ url_for('admin_dashboard') }}">
+                                    <i class="fas fa-shield-halved me-1 text-danger"></i>Admin Portal
+                                </a>
+                            </li>
+                            <li class="nav-item">
+                                <a class="nav-link" href="{{ url_for('admin_users') }}">
+                                    <i class="fas fa-users-gear me-1 text-info"></i>Users
+                                </a>
+                            </li>
+                            <li class="nav-item">
+                                <a class="nav-link" href="{{ url_for('admin_removal_requests') }}">
+                                    <i class="fas fa-user-minus me-1 text-warning"></i>Removal Requests
+                                </a>
+                            </li>
+                            <li class="nav-item">
+                                <a class="nav-link" href="{{ url_for('admin_audit_logs') }}">
+                                    <i class="fas fa-receipt me-1 text-secondary"></i>Audit Logs
+                                </a>
+                            </li>
+                        {% endif %}
+
+                        <!-- User Profile Menu -->
+                        <li class="nav-item dropdown ms-lg-2">
+                            <a class="nav-link dropdown-toggle d-flex align-items-center gap-2" href="#" id="userMenu" role="button" data-bs-toggle="dropdown" aria-expanded="false">
+                                <div style="width: 32px; height: 32px; border-radius: 8px; background: linear-gradient(135deg, #3b82f6, #8b5cf6); display: flex; align-items: center; justify-content: center; font-weight: 700; color: white;">
+                                    {{ session.get('username', 'U')[0].upper() }}
+                                </div>
+                                <span class="d-none d-md-inline">{{ session.get('username') }}</span>
+                            </a>
+                            <ul class="dropdown-menu dropdown-menu-end shadow-lg" style="background: var(--bg-card); border: 1px solid var(--border-subtle); border-radius: 12px; padding: 0.5rem;" aria-labelledby="userMenu">
+                                <li>
+                                    <div class="px-3 py-2 border-bottom mb-1" style="border-color: var(--border-subtle) !important;">
+                                        <div class="small text-muted">Signed in as</div>
+                                        <div class="fw-bold text-white">{{ session.get('username') }}</div>
+                                        <span class="badge-role badge-role-{{ role }} mt-1 d-inline-block">{{ role }}</span>
+                                    </div>
+                                </li>
+                                <li>
+                                    <a class="dropdown-item py-2 rounded text-danger" href="{{ url_for('logout') }}">
+                                        <i class="fas fa-sign-out-alt me-2"></i>Sign Out
+                                    </a>
+                                </li>
+                            </ul>
+                        </li>
+                    {% else %}
+                        <li class="nav-item">
+                            <a class="nav-link" href="{{ url_for('public_leaderboard') }}">
+                                <i class="fas fa-trophy me-1 text-warning"></i>Leaderboard
+                            </a>
+                        </li>
+                        <li class="nav-item dropdown">
+                            <a class="nav-link dropdown-toggle" href="#" id="signInDropdown" role="button" data-bs-toggle="dropdown" aria-expanded="false">
+                                <i class="fas fa-sign-in-alt me-1"></i>Sign In
+                            </a>
+                            <ul class="dropdown-menu dropdown-menu-end shadow-lg" style="background: var(--bg-card); border: 1px solid var(--border-subtle); border-radius: 12px; padding: 0.5rem;" aria-labelledby="signInDropdown">
+                                <li>
+                                    <a class="dropdown-item py-2 rounded text-white d-flex align-items-center gap-2" href="{{ url_for('login_student') }}">
+                                        <i class="fas fa-user-graduate text-primary"></i>
+                                        <div>
+                                            <div class="fw-bold small">Student Portal</div>
+                                            <div class="text-muted" style="font-size: 0.72rem;">Personal ratings &amp; classroom standings</div>
+                                        </div>
+                                    </a>
+                                </li>
+                                <li>
+                                    <a class="dropdown-item py-2 rounded text-white d-flex align-items-center gap-2" href="{{ url_for('login_staff') }}">
+                                        <i class="fas fa-chalkboard-user text-purple" style="color: #a78bfa;"></i>
+                                        <div>
+                                            <div class="fw-bold small">Faculty / Staff</div>
+                                            <div class="text-muted" style="font-size: 0.72rem;">Classroom cohorts &amp; analytics</div>
+                                        </div>
+                                    </a>
+                                </li>
+                                <li><hr class="dropdown-divider" style="border-color: var(--border-subtle);"></li>
+                                <li>
+                                    <a class="dropdown-item py-2 rounded text-white d-flex align-items-center gap-2" href="{{ url_for('login_admin') }}">
+                                        <i class="fas fa-shield-halved text-danger"></i>
+                                        <div>
+                                            <div class="fw-bold small">Administrator</div>
+                                            <div class="text-muted" style="font-size: 0.72rem;">System governance &amp; audit logs</div>
+                                        </div>
+                                    </a>
+                                </li>
+                            </ul>
+                        </li>
+                        <li class="nav-item ms-lg-2">
+                            <a class="btn btn-primary btn-sm px-3" href="{{ url_for('signup') }}">
+                                <i class="fas fa-user-plus me-1"></i>Student Signup
+                            </a>
+                        </li>
+                    {% endif %}
+                </ul>
+            </div>
+        </div>
+    </nav>
+
+    <!-- Content Container -->
+    <main class="container py-4 flex-grow-1">
+        {% with messages = get_flashed_messages(with_categories=true) %}
+        {% if messages %}
+        <div class="mb-4">
+            {% for category, message in messages %}
+            <div class="alert alert-{{ category if category != 'error' else 'danger' }} alert-custom alert-dismissible fade show d-flex align-items-center gap-3 py-3 px-4" role="alert">
+                {% if category == 'success' %}
+                <i class="fas fa-check-circle text-success fs-5"></i>
+                {% elif category == 'danger' or category == 'error' %}
+                <i class="fas fa-exclamation-circle text-danger fs-5"></i>
+                {% elif category == 'warning' %}
+                <i class="fas fa-exclamation-triangle text-warning fs-5"></i>
+                {% else %}
+                <i class="fas fa-info-circle text-info fs-5"></i>
+                {% endif %}
+                <div class="flex-grow-1 fw-medium">{{ message }}</div>
+                <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+            </div>
+            {% endfor %}
+        </div>
+        {% endif %}
+        {% endwith %}
+
+        {% block content %}{% endblock %}
+    </main>
+
+    <!-- Footer -->
+    <footer class="py-4 mt-5 text-center" style="border-top: 1px solid var(--border-subtle); background: var(--bg-surface);">
+        <div class="container">
+            <div class="text-muted small">
+                &copy; 2026 <strong>Global Platform Score Tracker</strong> &bull; Multi-Role Enterprise Portal
+            </div>
+        </div>
+    </footer>
+
+    <!-- Bootstrap Bundle JS -->
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
+    <!-- Theme JS -->
+    <script src="{{ url_for('static', filename='js/theme.js') }}"></script>
+    {% block scripts %}{% endblock %}
+</body>
+</html>

@@ -1,0 +1,380 @@
+{% extends "layout.html" %}
+
+{% block title %}User Management — Admin Portal{% endblock %}
+
+{% block content %}
+<div class="row align-items-center mb-4 g-3">
+    <div class="col-lg-7">
+        <div class="d-flex align-items-center gap-2 mb-1">
+            <a href="{{ url_for('admin_dashboard') }}" class="btn btn-sm btn-outline-custom p-1 px-2" title="Back to Admin Portal">
+                <i class="fas fa-arrow-left"></i>
+            </a>
+            <span class="badge bg-danger-subtle text-danger fw-bold px-3 py-1 rounded-pill" style="background: rgba(244, 63, 94, 0.15); color: #fb7185;">User Directory</span>
+        </div>
+        <h1 class="fw-black mb-1 display-6">User Accounts &amp; Governance</h1>
+        <p class="text-secondary small mb-0">Inspect user login accounts, credentials security, password resets, and export rosters</p>
+    </div>
+    <div class="col-lg-5 text-lg-end">
+        <div class="d-flex flex-wrap gap-2 justify-content-lg-end">
+            <a href="{{ url_for('admin_export_users') }}" class="btn btn-outline-custom" title="Export all user accounts and login metadata to Excel">
+                <i class="fas fa-file-excel text-success me-1"></i>Export to Excel
+            </a>
+            <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#createStaffModal">
+                <i class="fas fa-user-plus me-1"></i>Create User Account
+            </button>
+        </div>
+    </div>
+</div>
+
+<!-- Users Table Card -->
+<div class="glass-card p-4">
+    <div class="d-flex flex-column flex-md-row justify-content-between align-items-md-center gap-3 mb-4">
+        <div class="d-flex flex-wrap gap-1" id="roleFilters">
+            <button class="btn btn-sm btn-primary active role-filter-btn" data-role="all">All Roles ({{ users|length }})</button>
+            <button class="btn btn-sm btn-outline-custom role-filter-btn" data-role="staff">Staff Only</button>
+            <button class="btn btn-sm btn-outline-custom role-filter-btn" data-role="student">Students Only</button>
+            <button class="btn btn-sm btn-outline-custom role-filter-btn" data-role="admin">Admins Only</button>
+        </div>
+        <input type="text" id="userSearch" class="form-control form-control-sm" placeholder="Search by name, email, or handle..." style="max-width: 260px;">
+    </div>
+
+    <div class="table-responsive">
+        <table class="table table-custom align-middle" id="userTable">
+            <thead>
+                <tr>
+                    <th class="ps-3">User</th>
+                    <th>Login Email</th>
+                    <th>Role</th>
+                    <th>Status</th>
+                    <th>Roll / Student ID</th>
+                    <th>Registered</th>
+                    <th class="text-end pe-3">Actions</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for u in users %}
+                <tr class="user-row" data-role="{{ u.role }}" data-search="{{ u.full_name|lower if u.full_name else '' }} {{ u.username|lower }} {{ u.email|lower }} {{ u.student_identifier|lower if u.student_identifier else '' }}">
+                    <td class="ps-3">
+                        <div class="d-flex align-items-center gap-3">
+                            <div style="width: 36px; height: 36px; border-radius: 8px; background: linear-gradient(135deg, rgba(59, 130, 246, 0.2), rgba(139, 92, 246, 0.2)); border: 1px solid var(--border-subtle); display: flex; align-items: center; justify-content: center; font-weight: 800; color: #fff;">
+                                {{ u.full_name[0].upper() if u.full_name else u.username[0].upper() }}
+                            </div>
+                            <div>
+                                <div class="fw-bold text-white">{{ u.full_name or u.username }}</div>
+                                <div class="text-muted small">@{{ u.username }}</div>
+                            </div>
+                        </div>
+                    </td>
+                    <td><span class="text-secondary small font-monospace">{{ u.email }}</span></td>
+                    <td>
+                        <span class="badge-role badge-role-{{ u.role }}">{{ u.role }}</span>
+                    </td>
+                    <td>
+                        {% if u.is_active %}
+                        <span class="badge bg-success-subtle text-success small"><i class="fas fa-check-circle me-1"></i>Active</span>
+                        {% else %}
+                        <span class="badge bg-danger-subtle text-danger small"><i class="fas fa-ban me-1"></i>Deactivated</span>
+                        {% endif %}
+                    </td>
+                    <td>
+                        <span class="badge bg-dark border border-secondary text-secondary">
+                            {{ u.student_identifier or 'N/A' }}
+                        </span>
+                    </td>
+                    <td class="text-muted small">{{ u.created_at.strftime('%Y-%m-%d') if u.created_at else 'N/A' }}</td>
+                    <td class="text-end pe-3">
+                        <div class="d-inline-flex gap-1">
+                            <!-- View Login & Auth Details Button -->
+                            <button type="button" class="btn btn-sm btn-outline-custom" data-bs-toggle="modal" data-bs-target="#viewUserModal{{ u.id }}" title="View Login &amp; Security Profile">
+                                <i class="fas fa-id-card text-info"></i>
+                            </button>
+                            
+                            <!-- Reset Password Button -->
+                            <button type="button" class="btn btn-sm btn-outline-custom" data-bs-toggle="modal" data-bs-target="#resetPasswordModal{{ u.id }}" title="Reset User Password">
+                                <i class="fas fa-key text-warning"></i>
+                            </button>
+
+                            <!-- Toggle Status Button (Deactivate / Activate) -->
+                            {% if u.id != session.get('user_id') %}
+                            <a href="{{ url_for('admin_toggle_user_status', user_id=u.id) }}" class="btn btn-sm btn-outline-custom {{ 'text-warning' if u.is_active else 'text-success' }}" title="{{ 'Deactivate Account' if u.is_active else 'Activate Account' }}">
+                                <i class="fas {{ 'fa-ban' if u.is_active else 'fa-check' }}"></i>
+                            </a>
+
+                            <!-- Delete User Permanently from DB Button -->
+                            <button type="button" class="btn btn-sm btn-outline-custom text-danger" data-bs-toggle="modal" data-bs-target="#deleteUserModal{{ u.id }}" title="Permanently Delete User from Database">
+                                <i class="fas fa-trash-can"></i>
+                            </button>
+                            {% else %}
+                            <span class="btn btn-sm btn-outline-custom disabled text-muted" title="Active Administrator"><i class="fas fa-shield"></i></span>
+                            {% endif %}
+                        </div>
+                    </td>
+                </tr>
+
+                <!-- View Login & Security Details Modal for this user -->
+                <div class="modal fade" id="viewUserModal{{ u.id }}" tabindex="-1" aria-labelledby="viewUserModalLabel{{ u.id }}" aria-hidden="true">
+                    <div class="modal-dialog modal-dialog-centered">
+                        <div class="modal-content glass-card border-0 text-start" style="background: var(--bg-card) !important;">
+                            <div class="modal-header border-bottom" style="border-color: var(--border-subtle) !important;">
+                                <h5 class="modal-title fw-bold text-white" id="viewUserModalLabel{{ u.id }}">
+                                    <i class="fas fa-id-card text-info me-2"></i>Login &amp; Security Profile
+                                </h5>
+                                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                            </div>
+                            <div class="modal-body p-4">
+                                <div class="d-flex align-items-center gap-3 mb-4 p-3 rounded-3" style="background: rgba(0, 0, 0, 0.25); border: 1px solid var(--border-subtle);">
+                                    <div style="width: 48px; height: 48px; border-radius: 10px; background: linear-gradient(135deg, #3b82f6, #8b5cf6); display: flex; align-items: center; justify-content: center; font-size: 1.25rem; font-weight: 800; color: #fff;">
+                                        {{ u.full_name[0].upper() if u.full_name else u.username[0].upper() }}
+                                    </div>
+                                    <div>
+                                        <h5 class="fw-bold text-white mb-0">{{ u.full_name or u.username }}</h5>
+                                        <div class="text-secondary small">Username: <span class="text-info fw-bold">@{{ u.username }}</span> &bull; ID: #{{ u.id }}</div>
+                                    </div>
+                                </div>
+
+                                <div class="row g-3">
+                                    <div class="col-6">
+                                        <div class="text-muted small fw-bold text-uppercase">Role</div>
+                                        <div class="text-white mt-1"><span class="badge-role badge-role-{{ u.role }}">{{ u.role }}</span></div>
+                                    </div>
+                                    <div class="col-6">
+                                        <div class="text-muted small fw-bold text-uppercase">Account Status</div>
+                                        <div class="text-white mt-1">
+                                            {% if u.is_active %}
+                                            <span class="badge bg-success-subtle text-success"><i class="fas fa-check-circle me-1"></i>Active</span>
+                                            {% else %}
+                                            <span class="badge bg-danger-subtle text-danger"><i class="fas fa-ban me-1"></i>Deactivated</span>
+                                            {% endif %}
+                                        </div>
+                                    </div>
+                                    <div class="col-12">
+                                        <div class="text-muted small fw-bold text-uppercase">Login Email</div>
+                                        <div class="text-white font-monospace mt-1">{{ u.email }}</div>
+                                    </div>
+                                    <div class="col-6">
+                                        <div class="text-muted small fw-bold text-uppercase">Student ID / Roll No</div>
+                                        <div class="text-white mt-1">{{ u.student_identifier or 'N/A' }}</div>
+                                    </div>
+                                    <div class="col-6">
+                                        <div class="text-muted small fw-bold text-uppercase">Email Verified</div>
+                                        <div class="text-white mt-1">
+                                            {% if u.is_email_verified %}
+                                            <span class="text-success"><i class="fas fa-check-double me-1"></i>Verified</span>
+                                            {% else %}
+                                            <span class="text-warning"><i class="fas fa-hourglass-half me-1"></i>Pending</span>
+                                            {% endif %}
+                                        </div>
+                                    </div>
+                                    <div class="col-12">
+                                        <div class="p-3 rounded-3" style="background: rgba(59, 130, 246, 0.08); border: 1px dashed rgba(59, 130, 246, 0.3);">
+                                            <div class="d-flex align-items-center justify-content-between mb-1">
+                                                <span class="text-muted small fw-bold text-uppercase"><i class="fas fa-lock text-primary me-1"></i>Password Security</span>
+                                                <span class="badge bg-primary text-white" style="font-size: 0.7rem;">scrypt Hash</span>
+                                            </div>
+                                            <div class="small text-secondary" style="font-size: 0.8rem; line-height: 1.4;">
+                                                Passwords are irreversibly hashed using one-way cryptographic algorithms (<code>scrypt:32768:8:1</code>) for security compliance. Plaintext passwords are never stored.
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <div class="col-6">
+                                        <div class="text-muted small fw-bold text-uppercase">Registered On</div>
+                                        <div class="text-secondary small mt-1">{{ u.created_at.strftime('%Y-%m-%d %H:%M') if u.created_at else 'N/A' }}</div>
+                                    </div>
+                                    <div class="col-6">
+                                        <div class="text-muted small fw-bold text-uppercase">Last Login</div>
+                                        <div class="text-secondary small mt-1">{{ u.last_login_at.strftime('%Y-%m-%d %H:%M') if u.last_login_at else 'Never' }}</div>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="modal-footer border-top" style="border-color: var(--border-subtle) !important;">
+                                <button type="button" class="btn btn-outline-custom" data-bs-dismiss="modal">Close</button>
+                                <button type="button" class="btn btn-primary" data-bs-dismiss="modal" data-bs-toggle="modal" data-bs-target="#resetPasswordModal{{ u.id }}">
+                                    <i class="fas fa-key me-1"></i>Reset Password
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Reset Password Modal for this user -->
+                <div class="modal fade" id="resetPasswordModal{{ u.id }}" tabindex="-1" aria-labelledby="resetPasswordModalLabel{{ u.id }}" aria-hidden="true">
+                    <div class="modal-dialog modal-dialog-centered">
+                        <div class="modal-content glass-card border-0 text-start" style="background: var(--bg-card) !important;">
+                            <div class="modal-header border-bottom" style="border-color: var(--border-subtle) !important;">
+                                <h5 class="modal-title fw-bold text-white" id="resetPasswordModalLabel{{ u.id }}">
+                                    <i class="fas fa-key text-warning me-2"></i>Reset Password for @{{ u.username }}
+                                </h5>
+                                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                            </div>
+                            <form method="POST" action="{{ url_for('admin_reset_user_password', user_id=u.id) }}">
+                                <div class="modal-body p-4">
+                                    <p class="text-secondary small mb-3">
+                                        Assign a new password for <strong>{{ u.full_name or u.username }}</strong> (<code>{{ u.email }}</code>). The user will be able to sign in immediately with the new password.
+                                    </p>
+                                    <div class="mb-3">
+                                        <label for="newPass{{ u.id }}" class="form-label">New Password</label>
+                                        <input type="password" class="form-control" id="newPass{{ u.id }}" name="new_password" placeholder="At least 6 characters" required minlength="6" autofocus>
+                                    </div>
+                                </div>
+                                <div class="modal-footer border-top" style="border-color: var(--border-subtle) !important;">
+                                    <button type="button" class="btn btn-outline-custom" data-bs-dismiss="modal">Cancel</button>
+                                    <button type="submit" class="btn btn-warning text-dark fw-bold">
+                                        <i class="fas fa-save me-1"></i>Save New Password
+                                    </button>
+                                </div>
+                            </form>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Delete User Confirmation Modal for this user -->
+                <div class="modal fade" id="deleteUserModal{{ u.id }}" tabindex="-1" aria-labelledby="deleteUserModalLabel{{ u.id }}" aria-hidden="true">
+                    <div class="modal-dialog modal-dialog-centered">
+                        <div class="modal-content glass-card border-0 text-start" style="background: var(--bg-card) !important; border: 1px solid rgba(244, 63, 94, 0.4) !important;">
+                            <div class="modal-header border-bottom" style="border-color: rgba(244, 63, 94, 0.2) !important;">
+                                <h5 class="modal-title fw-bold text-danger" id="deleteUserModalLabel{{ u.id }}">
+                                    <i class="fas fa-triangle-exclamation me-2"></i>Permanently Delete User
+                                </h5>
+                                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                            </div>
+                            <form method="POST" action="{{ url_for('admin_delete_user', user_id=u.id) }}">
+                                <div class="modal-body p-4">
+                                    <div class="p-3 mb-3 rounded-3" style="background: rgba(244, 63, 94, 0.1); border: 1px dashed rgba(244, 63, 94, 0.4);">
+                                        <div class="fw-bold text-danger mb-1"><i class="fas fa-exclamation-circle me-1"></i>Irreversible Action</div>
+                                        <p class="small text-secondary mb-0">
+                                            Are you sure you want to permanently delete <strong>{{ u.full_name or u.username }}</strong> (<code>@{{ u.username }}</code> &bull; <code>{{ u.email }}</code>) from the database?
+                                        </p>
+                                    </div>
+                                    <ul class="small text-secondary ps-3 mb-0">
+                                        <li>Connected platform profiles, metrics, and daily snapshots will be purged.</li>
+                                        <li>Classroom memberships and roster enrollments will be deleted.</li>
+                                        <li>The user account cannot be restored after deletion.</li>
+                                    </ul>
+                                </div>
+                                <div class="modal-footer border-top" style="border-color: var(--border-subtle) !important;">
+                                    <button type="button" class="btn btn-outline-custom" data-bs-dismiss="modal">Cancel</button>
+                                    <button type="submit" class="btn btn-danger fw-bold">
+                                        <i class="fas fa-trash-can me-1"></i>Permanently Delete User
+                                    </button>
+                                </div>
+                            </form>
+                        </div>
+                    </div>
+                </div>
+
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<!-- Create User Modal -->
+<div class="modal fade" id="createStaffModal" tabindex="-1" aria-labelledby="createStaffModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content glass-card border-0 text-start" style="background: var(--bg-card) !important;">
+            <div class="modal-header border-bottom" style="border-color: var(--border-subtle) !important;">
+                <h5 class="modal-title fw-bold text-white" id="createStaffModalLabel">
+                    <i class="fas fa-user-plus text-primary me-2"></i>Provision User Account
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <form method="POST" action="{{ url_for('admin_create_user') }}">
+                <div class="modal-body p-4">
+                    <div class="mb-3">
+                        <label for="modalRole" class="form-label">Account Role</label>
+                        <select class="form-select" id="modalRole" name="role" required onchange="toggleAdminStudentId(this.value)">
+                            <option value="staff" selected>Faculty / Staff</option>
+                            <option value="student">Student</option>
+                            <option value="admin">Administrator</option>
+                        </select>
+                    </div>
+
+                    <div class="mb-3">
+                        <label for="modalFullName" class="form-label">Full Name</label>
+                        <input type="text" class="form-control" id="modalFullName" name="full_name" placeholder="e.g. Dr. Jane Doe" required autofocus>
+                    </div>
+
+                    <div class="mb-3">
+                        <label for="modalUsername" class="form-label">Username</label>
+                        <input type="text" class="form-control" id="modalUsername" name="username" placeholder="e.g. j_doe" required>
+                    </div>
+
+                    <div class="mb-3" id="adminStudentIdGroup" style="display: none;">
+                        <label for="modalStudentId" class="form-label">Student ID / Roll No. (Optional)</label>
+                        <input type="text" class="form-control" id="modalStudentId" name="student_identifier" placeholder="e.g. 2026-CS-042">
+                    </div>
+
+                    <div class="mb-3">
+                        <label for="modalEmail" class="form-label">Email Address</label>
+                        <input type="email" class="form-control" id="modalEmail" name="email" placeholder="jane.doe@university.edu" required>
+                    </div>
+
+                    <div class="mb-3">
+                        <label for="modalPassword" class="form-label">Initial Password</label>
+                        <input type="password" class="form-control" id="modalPassword" name="password" placeholder="At least 6 characters" required minlength="6">
+                    </div>
+                </div>
+                <div class="modal-footer border-top" style="border-color: var(--border-subtle) !important;">
+                    <button type="button" class="btn btn-outline-custom" data-bs-dismiss="modal">Cancel</button>
+                    <button type="submit" class="btn btn-primary">
+                        <i class="fas fa-check-circle me-1"></i>Provision Account
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    function toggleAdminStudentId(role) {
+        const group = document.getElementById('adminStudentIdGroup');
+        if (group) {
+            group.style.display = (role === 'student') ? 'block' : 'none';
+        }
+    }
+
+    document.addEventListener('DOMContentLoaded', () => {
+        const filterBtns = document.querySelectorAll('.role-filter-btn');
+        const searchInput = document.getElementById('userSearch');
+        const rows = document.querySelectorAll('.user-row');
+
+        let currentRole = 'all';
+        let searchQuery = '';
+
+        function applyUserFilters() {
+            rows.forEach(row => {
+                const role = row.getAttribute('data-role');
+                const searchData = row.getAttribute('data-search') || '';
+
+                const matchesRole = (currentRole === 'all' || role === currentRole);
+                const matchesSearch = (!searchQuery || searchData.includes(searchQuery));
+
+                row.style.display = (matchesRole && matchesSearch) ? '' : 'none';
+            });
+        }
+
+        filterBtns.forEach(btn => {
+            btn.addEventListener('click', () => {
+                filterBtns.forEach(b => {
+                    b.classList.remove('btn-primary', 'active');
+                    b.classList.add('btn-outline-custom');
+                });
+                btn.classList.remove('btn-outline-custom');
+                btn.classList.add('btn-primary', 'active');
+                currentRole = btn.getAttribute('data-role');
+                applyUserFilters();
+            });
+        });
+
+        if (searchInput) {
+            searchInput.addEventListener('input', (e) => {
+                searchQuery = e.target.value.toLowerCase().trim();
+                applyUserFilters();
+            });
+        }
+    });
+</script>
+{% endblock %}
+

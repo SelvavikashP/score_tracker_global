@@ -1,0 +1,115 @@
+{% extends "layout.html" %}
+
+{% block title %}Account Registration — Global Platform Score Tracker{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center align-items-center" style="min-height: 72vh;">
+    <div class="col-11 col-sm-9 col-md-7 col-lg-5 col-xl-4">
+        <div class="glass-card p-4 p-md-5">
+            <!-- Role Toggle Selector -->
+            <div class="d-flex p-1 mb-4 rounded-3" style="background: var(--bg-surface); border: 1px solid var(--border-subtle);">
+                <button type="button" class="btn btn-sm flex-fill fw-bold rounded-2 py-2 role-tab-btn {{ 'btn-primary active' if active_role != 'staff' else 'btn-link text-secondary text-decoration-none' }}" id="studentTabBtn" onclick="selectSignupRole('student')">
+                    <i class="fas fa-user-graduate me-1"></i>Student
+                </button>
+                <button type="button" class="btn btn-sm flex-fill fw-bold rounded-2 py-2 role-tab-btn {{ 'btn-primary active' if active_role == 'staff' else 'btn-link text-secondary text-decoration-none' }}" id="staffTabBtn" onclick="selectSignupRole('staff')">
+                    <i class="fas fa-chalkboard-user me-1"></i>Faculty / Staff
+                </button>
+            </div>
+
+            <!-- Header -->
+            <div class="text-center mb-4">
+                <div class="brand-icon mx-auto mb-3" id="roleIcon" style="width: 48px; height: 48px; font-size: 1.3rem;">
+                    <i class="fas {{ 'fa-chalkboard-user' if active_role == 'staff' else 'fa-user-graduate' }}"></i>
+                </div>
+                <h2 class="fw-bold mb-1" id="roleTitle">{{ 'Faculty / Staff Registration' if active_role == 'staff' else 'Student Registration' }}</h2>
+                <p class="text-secondary small mb-0" id="roleSubtitle">
+                    {{ 'Create a faculty account to create classrooms and monitor student rankings' if active_role == 'staff' else 'Create your student account to join classrooms and track rankings' }}
+                </p>
+            </div>
+
+            <form method="POST" action="{{ url_for('signup') }}" id="signupForm">
+                <input type="hidden" name="role" id="roleInput" value="{{ active_role or 'student' }}">
+
+                <div class="mb-3">
+                    <label for="full_name" class="form-label">Full Name</label>
+                    <input type="text" class="form-control" id="full_name" name="full_name" placeholder="e.g. Alex Johnson" required autofocus>
+                </div>
+
+                <div class="mb-3">
+                    <label for="username" class="form-label">Username</label>
+                    <input type="text" class="form-control" id="username" name="username" placeholder="e.g. alex_coder" required autocomplete="username">
+                </div>
+
+                <div class="mb-3" id="identifierGroup">
+                    <label for="student_identifier" class="form-label" id="identifierLabel">
+                        {{ 'Department / Designation (Optional)' if active_role == 'staff' else 'Student ID / Roll No. (Optional)' }}
+                    </label>
+                    <input type="text" class="form-control" id="student_identifier" name="student_identifier" placeholder="{{ 'e.g. Dept of Computer Science' if active_role == 'staff' else 'e.g. 2026-CS-042' }}">
+                </div>
+
+                <div class="mb-3">
+                    <label for="email" class="form-label">Email Address</label>
+                    <input type="email" class="form-control" id="email" name="email" placeholder="name@university.edu" required autocomplete="email">
+                </div>
+
+                <div class="mb-4">
+                    <label for="password" class="form-label">Password</label>
+                    <input type="password" class="form-control" id="password" name="password" placeholder="At least 6 characters" required autocomplete="new-password" minlength="6">
+                </div>
+
+                <button type="submit" class="btn btn-primary w-100 py-3 mb-3" id="submitBtn">
+                    <i class="fas fa-rocket me-1"></i><span id="submitBtnText">{{ 'Create Faculty Account' if active_role == 'staff' else 'Create Student Account' }}</span>
+                </button>
+            </form>
+
+            <div class="text-center pt-3 mt-3 border-top" style="border-color: var(--border-subtle) !important;">
+                <p class="text-secondary small mb-0">
+                    Already registered? 
+                    <a href="{{ url_for('login') }}" class="text-primary text-decoration-none fw-bold ms-1" id="loginLink">Sign In</a>
+                </p>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    function selectSignupRole(role) {
+        const roleInput = document.getElementById('roleInput');
+        const studentBtn = document.getElementById('studentTabBtn');
+        const staffBtn = document.getElementById('staffTabBtn');
+        const roleIcon = document.getElementById('roleIcon');
+        const roleTitle = document.getElementById('roleTitle');
+        const roleSubtitle = document.getElementById('roleSubtitle');
+        const identifierLabel = document.getElementById('identifierLabel');
+        const identifierInput = document.getElementById('student_identifier');
+        const submitBtnText = document.getElementById('submitBtnText');
+        const loginLink = document.getElementById('loginLink');
+
+        roleInput.value = role;
+
+        if (role === 'staff') {
+            staffBtn.className = 'btn btn-sm flex-fill fw-bold rounded-2 py-2 role-tab-btn btn-primary active';
+            studentBtn.className = 'btn btn-sm flex-fill fw-bold rounded-2 py-2 role-tab-btn btn-link text-secondary text-decoration-none';
+            roleIcon.innerHTML = '<i class="fas fa-chalkboard-user"></i>';
+            roleTitle.innerText = 'Faculty / Staff Registration';
+            roleSubtitle.innerText = 'Create a faculty account to create classrooms and monitor student rankings';
+            identifierLabel.innerText = 'Department / Designation (Optional)';
+            identifierInput.placeholder = 'e.g. Dept of Computer Science';
+            submitBtnText.innerText = 'Create Faculty Account';
+            loginLink.href = '{{ url_for("login_staff") }}';
+        } else {
+            studentBtn.className = 'btn btn-sm flex-fill fw-bold rounded-2 py-2 role-tab-btn btn-primary active';
+            staffBtn.className = 'btn btn-sm flex-fill fw-bold rounded-2 py-2 role-tab-btn btn-link text-secondary text-decoration-none';
+            roleIcon.innerHTML = '<i class="fas fa-user-graduate"></i>';
+            roleTitle.innerText = 'Student Registration';
+            roleSubtitle.innerText = 'Create your student account to join classrooms and track rankings';
+            identifierLabel.innerText = 'Student ID / Roll No. (Optional)';
+            identifierInput.placeholder = 'e.g. 2026-CS-042';
+            submitBtnText.innerText = 'Create Student Account';
+            loginLink.href = '{{ url_for("login_student") }}';
+        }
+    }
+</script>
+{% endblock %}

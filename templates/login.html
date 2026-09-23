@@ -1,0 +1,110 @@
+{% extends "layout.html" %}
+
+{% block title %}
+    {% if active_role == 'admin' %}Administrator Sign In — Global Score Tracker
+    {% elif active_role == 'staff' %}Faculty & Staff Sign In — Global Score Tracker
+    {% else %}Student Sign In — Global Score Tracker{% endif %}
+{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center align-items-center py-4" style="min-height: 75vh;">
+    <div class="col-12 col-sm-10 col-md-8 col-lg-6 col-xl-5" style="max-width: 500px;">
+        <!-- Role Selection Tabs -->
+        <div class="d-flex justify-content-center mb-3">
+            <div class="glass-card p-1 d-inline-flex gap-1" style="border-radius: 12px !important;">
+                <a href="{{ url_for('login_student') }}" class="btn btn-sm {% if active_role == 'student' %}btn-primary active{% else %}btn-outline-custom border-0{% endif %} px-3" id="tabStudent">
+                    <i class="fas fa-user-graduate me-1"></i>Student
+                </a>
+                <a href="{{ url_for('login_staff') }}" class="btn btn-sm {% if active_role == 'staff' %}btn-primary active{% else %}btn-outline-custom border-0{% endif %} px-3" id="tabStaff" style="{% if active_role == 'staff' %}background: linear-gradient(135deg, #8b5cf6, #7c3aed);{% endif %}">
+                    <i class="fas fa-chalkboard-user me-1"></i>Faculty / Staff
+                </a>
+                <a href="{{ url_for('login_admin') }}" class="btn btn-sm {% if active_role == 'admin' %}btn-primary active{% else %}btn-outline-custom border-0{% endif %} px-3" id="tabAdmin" style="{% if active_role == 'admin' %}background: linear-gradient(135deg, #f43f5e, #e11d48);{% endif %}">
+                    <i class="fas fa-shield-halved me-1"></i>Admin
+                </a>
+            </div>
+        </div>
+
+        <div class="glass-card p-4 p-md-5">
+            <!-- Header with Dynamic Role Identity -->
+            <div class="text-center mb-4">
+                {% if active_role == 'admin' %}
+                <div class="brand-icon mx-auto mb-3" style="width: 52px; height: 52px; font-size: 1.4rem; background: linear-gradient(135deg, #f43f5e, #e11d48); box-shadow: 0 4px 14px rgba(244, 63, 94, 0.35);">
+                    <i class="fas fa-shield-halved"></i>
+                </div>
+                <span class="badge bg-danger-subtle text-danger fw-bold px-3 py-1 rounded-pill mb-2" style="background: rgba(244, 63, 94, 0.15); color: #fb7185;">Admin Control Center</span>
+                <h2 class="fw-bold mb-1">Administrator Login</h2>
+                <p class="text-secondary small mb-0">System governance, faculty management, and portal audit logs</p>
+
+                {% elif active_role == 'staff' %}
+                <div class="brand-icon mx-auto mb-3" style="width: 52px; height: 52px; font-size: 1.4rem; background: linear-gradient(135deg, #8b5cf6, #7c3aed); box-shadow: 0 4px 14px rgba(139, 92, 246, 0.35);">
+                    <i class="fas fa-chalkboard-user"></i>
+                </div>
+                <span class="badge bg-purple-subtle text-purple fw-bold px-3 py-1 rounded-pill mb-2" style="background: rgba(139, 92, 246, 0.15); color: #a78bfa;">Faculty &amp; Instructor Portal</span>
+                <h2 class="fw-bold mb-1">Faculty / Staff Login</h2>
+                <p class="text-secondary small mb-0">Manage classrooms, student rosters, and view cohort analytics</p>
+
+                {% else %}
+                <div class="brand-icon mx-auto mb-3" style="width: 52px; height: 52px; font-size: 1.4rem; background: linear-gradient(135deg, #3b82f6, #8b5cf6); box-shadow: 0 4px 14px rgba(59, 130, 246, 0.35);">
+                    <i class="fas fa-user-graduate"></i>
+                </div>
+                <span class="badge bg-primary-subtle text-primary fw-bold px-3 py-1 rounded-pill mb-2" style="background: rgba(59, 130, 246, 0.15); color: #60a5fa;">Student Performance Portal</span>
+                <h2 class="fw-bold mb-1">Student Login</h2>
+                <p class="text-secondary small mb-0">Access your coding performance, ratings, and classroom leaderboards</p>
+                {% endif %}
+            </div>
+
+            <!-- Login Form -->
+            <form method="POST" action="{% if active_role == 'admin' %}{{ url_for('login_admin') }}{% elif active_role == 'staff' %}{{ url_for('login_staff') }}{% else %}{{ url_for('login_student') }}{% endif %}">
+                <input type="hidden" name="target_role" value="{{ active_role }}">
+
+                <div class="mb-3">
+                    <label for="email" class="form-label">
+                        {% if active_role == 'admin' %}Administrator Email Address
+                        {% elif active_role == 'staff' %}Faculty Email Address
+                        {% else %}Student Email Address{% endif %}
+                    </label>
+                    <div class="position-relative">
+                        <input type="email" class="form-control" id="email" name="email" 
+                               placeholder="{% if active_role == 'admin' %}admin@scoretracker.io{% elif active_role == 'staff' %}professor@university.edu{% else %}student@university.edu{% endif %}" 
+                               required autocomplete="email" autofocus>
+                    </div>
+                </div>
+
+                <div class="mb-4">
+                    <label for="password" class="form-label">Password</label>
+                    <div class="position-relative">
+                        <input type="password" class="form-control" id="password" name="password" placeholder="••••••••" required autocomplete="current-password">
+                    </div>
+                </div>
+
+                <button type="submit" class="btn w-100 py-3 mb-3 {% if active_role == 'admin' %}btn-danger{% elif active_role == 'staff' %}btn-primary{% else %}btn-primary{% endif %}" 
+                        style="{% if active_role == 'staff' %}background: linear-gradient(135deg, #8b5cf6, #7c3aed); border: none;{% elif active_role == 'admin' %}background: linear-gradient(135deg, #f43f5e, #e11d48); border: none;{% endif %}">
+                    <i class="fas fa-sign-in-alt me-2"></i>
+                    {% if active_role == 'admin' %}Sign In as Administrator
+                    {% elif active_role == 'staff' %}Sign In as Faculty
+                    {% else %}Sign In to Student Dashboard{% endif %}
+                </button>
+            </form>
+
+            <!-- Contextual Footer Help Links -->
+            <div class="text-center pt-3 mt-3 border-top" style="border-color: var(--border-subtle) !important;">
+                {% if active_role == 'student' %}
+                <p class="text-secondary small mb-0">
+                    Are you a student without an account? 
+                    <a href="{{ url_for('signup') }}" class="text-primary text-decoration-none fw-bold ms-1">Register Here</a>
+                </p>
+                {% elif active_role == 'staff' %}
+                <p class="text-secondary small mb-0">
+                    New faculty member? 
+                    <a href="{{ url_for('signup', role='staff') }}" class="text-primary text-decoration-none fw-bold ms-1" style="color: #a78bfa !important;">Create Faculty Account</a>
+                </p>
+                {% elif active_role == 'admin' %}
+                <p class="text-secondary small mb-0">
+                    Administrator access is restricted to authorized portal operators.
+                </p>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

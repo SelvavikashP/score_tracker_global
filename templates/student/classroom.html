@@ -1,0 +1,100 @@
+{% extends "layout.html" %}
+
+{% block title %}{{ classroom.name }} — Classroom Leaderboard{% endblock %}
+
+{% block content %}
+<div class="row align-items-center mb-4 g-3">
+    <div class="col-lg-7">
+        <div class="d-flex align-items-center gap-2 mb-1">
+            <a href="{{ url_for('student_dashboard') }}" class="btn btn-sm btn-outline-custom p-1 px-2" title="Back to My Dashboard">
+                <i class="fas fa-arrow-left"></i>
+            </a>
+            <span class="badge bg-info-subtle text-info fw-bold px-3 py-1 rounded-pill">Classroom Standings</span>
+        </div>
+        <h1 class="fw-black mb-1 display-6">{{ classroom.name }}</h1>
+        <p class="text-secondary small mb-0">Instructor: <strong>{{ classroom.staff.full_name or classroom.staff.username }}</strong> &bull; {{ student_scores|length }} Active Classmates</p>
+    </div>
+    <div class="col-lg-5 text-lg-end">
+        <a href="{{ url_for('download_classroom_report', classroom_id=classroom.id) }}" class="btn btn-outline-custom">
+            <i class="fas fa-file-excel text-success me-1"></i>Export Roster (.xlsx)
+        </a>
+    </div>
+</div>
+
+<!-- Leaderboard Table Card -->
+<div class="glass-card p-4">
+    <div class="d-flex justify-content-between align-items-center mb-3">
+        <h5 class="fw-bold text-white mb-0"><i class="fas fa-trophy text-warning me-2"></i>Classroom Leaderboard</h5>
+        <span class="badge bg-dark border border-secondary text-secondary small">Ranked by Composite Performance Score</span>
+    </div>
+
+    <div class="table-responsive">
+        <table class="table table-custom align-middle">
+            <thead>
+                <tr>
+                    <th class="ps-3" style="width: 70px;">Rank</th>
+                    <th>Classmate</th>
+                    <th>Peak Rating</th>
+                    <th>Problems Solved</th>
+                    <th>Contests</th>
+                    <th class="text-end pe-3">Performance Score</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for item in student_scores %}
+                {% set classmate = item.student %}
+                <tr {% if classmate.id == session.get('user_id') %}style="border-left: 3px solid var(--accent-blue); background: rgba(59, 130, 246, 0.1) !important;"{% endif %}>
+                    <td class="ps-3">
+                        {% if loop.index == 1 %}
+                        <div class="rank-badge rank-gold" title="Rank 1">🥇</div>
+                        {% elif loop.index == 2 %}
+                        <div class="rank-badge rank-silver" title="Rank 2">🥈</div>
+                        {% elif loop.index == 3 %}
+                        <div class="rank-badge rank-bronze" title="Rank 3">🥉</div>
+                        {% else %}
+                        <div class="rank-badge rank-default">#{{ loop.index }}</div>
+                        {% endif %}
+                    </td>
+                    <td>
+                        <div class="d-flex align-items-center gap-3">
+                            <div style="width: 38px; height: 38px; border-radius: 8px; background: linear-gradient(135deg, rgba(59, 130, 246, 0.2), rgba(139, 92, 246, 0.2)); border: 1px solid var(--border-subtle); display: flex; align-items: center; justify-content: center; font-weight: 800; color: #fff;">
+                                {{ classmate.full_name[0].upper() if classmate.full_name else classmate.username[0].upper() }}
+                            </div>
+                            <div>
+                                <div class="fw-bold text-white fs-6">
+                                    {{ classmate.full_name or classmate.username }}
+                                    {% if classmate.id == session.get('user_id') %}
+                                    <span class="badge bg-primary-subtle text-primary ms-1" style="font-size: 0.65rem;">YOU</span>
+                                    {% endif %}
+                                </div>
+                                <div class="text-muted small" style="font-size: 0.75rem;">
+                                    {{ item.platforms | length }} Connected Platforms
+                                </div>
+                            </div>
+                        </div>
+                    </td>
+                    <td>
+                        <div class="fw-bold text-white">{{ item.peak_rating }}</div>
+                    </td>
+                    <td>
+                        <div class="fw-bold text-white">{{ "{:,}".format(item.total_solved) }}</div>
+                    </td>
+                    <td>
+                        <div class="fw-bold text-white">{{ item.total_contests }}</div>
+                    </td>
+                    <td class="text-end pe-3">
+                        <span class="badge px-3 py-2 rounded-pill fs-6 fw-bold" style="background: rgba(59, 130, 246, 0.15); color: #60a5fa; border: 1px solid rgba(59, 130, 246, 0.3);">
+                            {{ "{:,.1f}".format(item.total_score) }} pts
+                        </span>
+                    </td>
+                </tr>
+                {% else %}
+                <tr>
+                    <td colspan="6" class="text-center py-4 text-muted">No students in this classroom yet.</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endblock %}

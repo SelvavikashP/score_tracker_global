@@ -1,0 +1,61 @@
+{% extends "layout.html" %}
+
+{% block title %}Join Classroom — Global Platform Score Tracker{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center align-items-center" style="min-height: 70vh;">
+    <div class="col-11 col-sm-9 col-md-7 col-lg-5">
+        <div class="glass-card p-4 p-md-5 text-center">
+            <div class="brand-icon mx-auto mb-3" style="width: 56px; height: 56px; font-size: 1.5rem; background: linear-gradient(135deg, #10b981, #059669);">
+                <i class="fas fa-door-open"></i>
+            </div>
+            
+            <span class="badge bg-success-subtle text-success px-3 py-1 rounded-pill mb-2 fw-bold">Classroom Invitation</span>
+            <h2 class="fw-bold mb-1 text-white">{{ classroom.name }}</h2>
+            <p class="text-secondary small mb-3">Instructor: <strong>{{ classroom.staff.full_name or classroom.staff.username }}</strong></p>
+
+            {% if classroom.description %}
+            <div class="p-3 rounded-3 mb-4 text-start" style="background: var(--bg-surface); border: 1px solid var(--border-subtle);">
+                <div class="small text-muted mb-1 fw-bold text-uppercase" style="font-size: 0.7rem;">About this class</div>
+                <div class="text-secondary small">{{ classroom.description }}</div>
+            </div>
+            {% endif %}
+
+            {% if is_member %}
+                <div class="alert alert-info py-2 px-3 small mb-4">
+                    <i class="fas fa-check-circle me-1"></i>You are already an active member of this classroom.
+                </div>
+                <a href="{{ url_for('student_classroom_leaderboard', classroom_id=classroom.id) }}" class="btn btn-primary w-100 py-3">
+                    <i class="fas fa-chart-line me-1"></i>View Classroom Leaderboard
+                </a>
+            {% elif session.get('user_id') and session.get('role') == 'student' %}
+                <form method="POST" action="{{ url_for('join_classroom_submit', token=classroom.invite_token) }}">
+                    <button type="submit" class="btn btn-success w-100 py-3 mb-2 fs-6">
+                        <i class="fas fa-user-plus me-1"></i>Confirm &amp; Join Classroom
+                    </button>
+                    <a href="{{ url_for('student_dashboard') }}" class="btn btn-outline-custom w-100 py-2">
+                        Cancel
+                    </a>
+                </form>
+            {% elif session.get('user_id') and session.get('role') != 'student' %}
+                <div class="alert alert-warning py-2 px-3 small mb-4">
+                    <i class="fas fa-exclamation-triangle me-1"></i>You are currently signed in as <strong>{{ session.get('role') }}</strong>. Classroom join links are for student accounts.
+                </div>
+                <a href="{{ url_for('index') }}" class="btn btn-outline-custom w-100 py-2">Return to Dashboard</a>
+            {% else %}
+                <div class="p-3 rounded-3 mb-4" style="background: rgba(59, 130, 246, 0.08); border: 1px solid rgba(59, 130, 246, 0.2);">
+                    <p class="small text-white mb-0">Please sign in with your student account or register to join this classroom.</p>
+                </div>
+                <div class="d-grid gap-2">
+                    <a href="{{ url_for('login', next=request.path) }}" class="btn btn-primary py-2">
+                        <i class="fas fa-sign-in-alt me-1"></i>Sign In as Student
+                    </a>
+                    <a href="{{ url_for('signup', next=request.path) }}" class="btn btn-outline-custom py-2">
+                        <i class="fas fa-user-plus me-1"></i>Create Student Account
+                    </a>
+                </div>
+            {% endif %}
+        </div>
+    </div>
+</div>
+{% endblock %}

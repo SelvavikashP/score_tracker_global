@@ -1,0 +1,136 @@
+{% extends "layout.html" %}
+
+{% block title %}Classroom Leaderboard — Staff Portal{% endblock %}
+
+{% block content %}
+<div class="row align-items-center mb-4 g-3">
+    <div class="col-lg-7">
+        <div class="d-flex align-items-center gap-2 mb-1">
+            <a href="{{ url_for('staff_dashboard') }}" class="btn btn-sm btn-outline-custom p-1 px-2" title="Back to Dashboard">
+                <i class="fas fa-arrow-left"></i>
+            </a>
+            <span class="badge bg-purple-subtle text-purple fw-bold px-3 py-1 rounded-pill" style="background: rgba(139, 92, 246, 0.15); color: #a78bfa;">Performance Leaderboard</span>
+        </div>
+        <h1 class="fw-black mb-1 display-6">{{ classroom.name }}</h1>
+        <p class="text-secondary small mb-0">Cohort Leaderboard &bull; Ranked by configurable composite performance score</p>
+    </div>
+    <div class="col-lg-5 text-lg-end">
+        <a href="{{ url_for('download_classroom_report', classroom_id=classroom.id) }}" class="btn btn-outline-custom">
+            <i class="fas fa-file-excel text-success me-1"></i>Export Roster (.xlsx)
+        </a>
+    </div>
+</div>
+
+<!-- Leaderboard Table Card -->
+<div class="glass-card p-4">
+    <div class="d-flex flex-column flex-md-row justify-content-between align-items-md-center gap-3 mb-4">
+        <div>
+            <h5 class="fw-bold text-white mb-0"><i class="fas fa-trophy text-warning me-2"></i>Classroom Standings</h5>
+            <span class="text-muted small">Score = Rating + Problems Solved + Contests + Daily Deltas</span>
+        </div>
+        <div class="d-flex gap-2">
+            <input type="text" id="leaderboardSearch" class="form-control form-control-sm" placeholder="Search student or ID..." style="max-width: 220px;">
+        </div>
+    </div>
+
+    <div class="table-responsive">
+        <table class="table table-custom align-middle">
+            <thead>
+                <tr>
+                    <th class="ps-3" style="width: 70px;">Rank</th>
+                    <th>Student</th>
+                    <th>Student ID</th>
+                    <th>Platforms</th>
+                    <th>Peak Rating</th>
+                    <th>Problems Solved</th>
+                    <th>Contests</th>
+                    <th class="text-end pe-3">Performance Score</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for item in student_scores %}
+                {% set s = item.student %}
+                <tr class="lb-row" data-search="{{ s.full_name|lower }} {{ s.username|lower }} {{ s.student_identifier|lower if s.student_identifier else '' }}">
+                    <td class="ps-3">
+                        {% if loop.index == 1 %}
+                        <div class="rank-badge rank-gold" title="Rank 1">🥇</div>
+                        {% elif loop.index == 2 %}
+                        <div class="rank-badge rank-silver" title="Rank 2">🥈</div>
+                        {% elif loop.index == 3 %}
+                        <div class="rank-badge rank-bronze" title="Rank 3">🥉</div>
+                        {% else %}
+                        <div class="rank-badge rank-default">#{{ loop.index }}</div>
+                        {% endif %}
+                    </td>
+                    <td>
+                        <div class="d-flex align-items-center gap-3">
+                            <div style="width: 38px; height: 38px; border-radius: 8px; background: linear-gradient(135deg, rgba(59, 130, 246, 0.2), rgba(139, 92, 246, 0.2)); border: 1px solid var(--border-subtle); display: flex; align-items: center; justify-content: center; font-weight: 800; color: #fff;">
+                                {{ s.full_name[0].upper() if s.full_name else s.username[0].upper() }}
+                            </div>
+                            <div>
+                                <a href="{{ url_for('staff_student_detail', student_id=s.id) }}" class="fw-bold text-white text-decoration-none hover-glow fs-6">
+                                    {{ s.full_name or s.username }}
+                                </a>
+                                <div class="text-muted small">@{{ s.username }}</div>
+                            </div>
+                        </div>
+                    </td>
+                    <td>
+                        <span class="badge bg-dark border border-secondary text-secondary">
+                            {{ s.student_identifier or 'N/A' }}
+                        </span>
+                    </td>
+                    <td>
+                        <div class="d-flex flex-wrap gap-1">
+                            {% for p in item.platforms %}
+                            <span class="badge-platform bg-platform-{{ p.platform.lower() }}" style="font-size: 0.7rem; padding: 0.25rem 0.5rem;">
+                                {{ p.platform }}
+                            </span>
+                            {% else %}
+                            <span class="text-muted small">None</span>
+                            {% endfor %}
+                        </div>
+                    </td>
+                    <td>
+                        <div class="fw-bold text-white">{{ item.peak_rating }}</div>
+                    </td>
+                    <td>
+                        <div class="fw-bold text-white">{{ "{:,}".format(item.total_solved) }}</div>
+                    </td>
+                    <td>
+                        <div class="fw-bold text-white">{{ item.total_contests }}</div>
+                    </td>
+                    <td class="text-end pe-3">
+                        <span class="badge px-3 py-2 rounded-pill fs-6 fw-bold" style="background: rgba(59, 130, 246, 0.15); color: #60a5fa; border: 1px solid rgba(59, 130, 246, 0.3);">
+                            {{ "{:,.1f}".format(item.total_score) }} pts
+                        </span>
+                    </td>
+                </tr>
+                {% else %}
+                <tr>
+                    <td colspan="8" class="text-center py-4 text-muted">No students in this classroom yet.</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    document.addEventListener('DOMContentLoaded', () => {
+        const searchInput = document.getElementById('leaderboardSearch');
+        if (searchInput) {
+            searchInput.addEventListener('input', (e) => {
+                const query = e.target.value.toLowerCase().trim();
+                const rows = document.querySelectorAll('.lb-row');
+                rows.forEach(row => {
+                    const text = row.getAttribute('data-search') || '';
+                    row.style.display = text.includes(query) ? '' : 'none';
+                });
+            });
+        }
+    });
+</script>
+{% endblock %}

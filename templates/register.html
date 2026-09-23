@@ -1,0 +1,104 @@
+{% extends "layout.html" %}
+
+{% block content %}
+<div class="row justify-content-center">
+    <div class="col-11 col-sm-10 col-md-8 col-lg-6 col-xl-5">
+        <div class="glass-card p-4 p-md-5">
+            <div class="text-center mb-4">
+                <div class="brand-icon mx-auto mb-3" style="width: 48px; height: 48px; font-size: 1.3rem;">
+                    <i class="fas fa-plus"></i>
+                </div>
+                <h2 class="fw-black text-white mb-1">Add Platform Profile</h2>
+                <p class="text-secondary small mb-0">Track your statistics from competitive programming platforms</p>
+            </div>
+
+            <form method="POST" action="{{ url_for('register') }}" id="registerForm">
+                <div class="mb-3">
+                    <label for="name" class="form-label">Full Name or Handle Alias</label>
+                    <input type="text" class="form-control" id="name" name="name" placeholder="e.g. Gennady Korotkevich" required autofocus>
+                </div>
+
+                <div class="mb-3">
+                    <label for="platform" class="form-label">Select Platform</label>
+                    <select class="form-select" id="platform" name="platform" required>
+                        <option value="Codeforces" selected>Codeforces</option>
+                        <option value="LeetCode">LeetCode</option>
+                        <option value="CodeChef">CodeChef</option>
+                        <option value="AtCoder">AtCoder</option>
+                        <option value="HackerRank">HackerRank</option>
+                    </select>
+                </div>
+
+                <div class="mb-4">
+                    <label for="profile_url" class="form-label">Profile URL or Handle</label>
+                    <input type="text" class="form-control" id="profile_url" name="profile_url" placeholder="https://codeforces.com/profile/tourist or tourist" required>
+                    <div class="form-text text-muted mt-2 small" id="platformHint">
+                        <i class="fas fa-info-circle me-1 text-primary"></i>Enter your <strong>Codeforces</strong> handle (e.g. <code>tourist</code>) or full profile URL.
+                    </div>
+                </div>
+
+                <div class="d-grid gap-2">
+                    <button type="submit" class="btn btn-primary py-3" id="submitBtn">
+                        <span id="btnText"><i class="fas fa-link me-1"></i>Connect Profile</span>
+                        <span id="btnSpinner" class="d-none"><span class="spinner-border spinner-border-sm me-2" role="status"></span>Fetching Live Stats...</span>
+                    </button>
+                    <a href="{{ url_for('index') }}" class="btn btn-outline-custom">Cancel</a>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<script>
+    document.addEventListener('DOMContentLoaded', () => {
+        const platformSelect = document.getElementById('platform');
+        const profileInput = document.getElementById('profile_url');
+        const platformHint = document.getElementById('platformHint');
+        const form = document.getElementById('registerForm');
+        const submitBtn = document.getElementById('submitBtn');
+        const btnText = document.getElementById('btnText');
+        const btnSpinner = document.getElementById('btnSpinner');
+
+        const hints = {
+            'Codeforces': {
+                placeholder: 'e.g. tourist or https://codeforces.com/profile/tourist',
+                hint: '<i class="fas fa-info-circle me-1 text-primary"></i>Enter your <strong>Codeforces</strong> handle or profile URL.'
+            },
+            'LeetCode': {
+                placeholder: 'e.g. lee215 or https://leetcode.com/u/lee215/',
+                hint: '<i class="fas fa-info-circle me-1 text-warning"></i>Enter your <strong>LeetCode</strong> username or profile URL.'
+            },
+            'CodeChef': {
+                placeholder: 'e.g. tourist or https://www.codechef.com/users/tourist',
+                hint: '<i class="fas fa-info-circle me-1" style="color: #c084fc;"></i>Enter your <strong>CodeChef</strong> username or profile URL.'
+            },
+            'AtCoder': {
+                placeholder: 'e.g. chokudai or https://atcoder.jp/users/chokudai',
+                hint: '<i class="fas fa-info-circle me-1 text-danger"></i>Enter your <strong>AtCoder</strong> username or profile URL.'
+            },
+            'HackerRank': {
+                placeholder: 'e.g. tourist or https://www.hackerrank.com/profile/tourist',
+                hint: '<i class="fas fa-info-circle me-1 text-success"></i>Enter your <strong>HackerRank</strong> username or profile URL.'
+            }
+        };
+
+        function updateHints() {
+            const val = platformSelect.value;
+            const config = hints[val] || hints['Codeforces'];
+            profileInput.placeholder = config.placeholder;
+            platformHint.innerHTML = config.hint;
+        }
+
+        platformSelect.addEventListener('change', updateHints);
+        updateHints();
+
+        form.addEventListener('submit', () => {
+            btnText.classList.add('d-none');
+            btnSpinner.classList.remove('d-none');
+            submitBtn.disabled = true;
+            // Submit form
+            form.submit();
+        });
+    });
+</script>
+{% endblock %}

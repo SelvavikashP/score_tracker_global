@@ -1,0 +1,659 @@
+{% extends "layout.html" %}
+
+{% block title %}Master Admin Portal — Dashboard{% endblock %}
+
+{% block content %}
+<div class="row align-items-center mb-4 g-3">
+    <div class="col-lg-7">
+        <span class="badge bg-danger-subtle text-danger mb-1 fw-bold px-3 py-1 rounded-pill" style="background: rgba(244, 63, 94, 0.15); color: #fb7185;">System Administration</span>
+        <h1 class="fw-black mb-1 display-6">Portal Control Center</h1>
+        <p class="text-secondary small mb-0">System-wide monitoring, user governance, classroom oversight, and audit logs</p>
+    </div>
+    <div class="col-lg-5 text-lg-end">
+        <div class="d-flex flex-wrap gap-2 justify-content-lg-end">
+            <a href="{{ url_for('admin_sync_all') }}" class="btn btn-outline-custom" title="Trigger full portal platform synchronization">
+                <i class="fas fa-sync-alt text-primary"></i>Sync All Profiles
+            </a>
+            <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#createStaffModal">
+                <i class="fas fa-user-plus"></i>Create Staff Account
+            </button>
+        </div>
+    </div>
+</div>
+
+<!-- Interactive Quick Statistics Overview -->
+<div class="row g-3 mb-4">
+    <div class="col-12 col-sm-6 col-lg-3">
+        <button type="button" class="stat-card stat-card-clickable" data-bs-toggle="modal" data-bs-target="#studentsListModal" title="Click to view all student accounts">
+            <div class="d-flex justify-content-between align-items-center">
+                <div class="text-muted small fw-bold text-uppercase" style="letter-spacing: 0.5px;">Total Students</div>
+                <span class="badge bg-primary-subtle text-primary stat-card-hint"><i class="fas fa-list-ul me-1"></i>View List</span>
+            </div>
+            <div class="fs-3 fw-bold text-white mt-1">{{ total_students }}</div>
+            <div class="stat-icon" style="background: rgba(59, 130, 246, 0.15); color: #60a5fa;">
+                <i class="fas fa-user-graduate"></i>
+            </div>
+        </button>
+    </div>
+    <div class="col-12 col-sm-6 col-lg-3">
+        <button type="button" class="stat-card stat-card-clickable" data-bs-toggle="modal" data-bs-target="#staffListModal" title="Click to view all faculty and staff">
+            <div class="d-flex justify-content-between align-items-center">
+                <div class="text-muted small fw-bold text-uppercase" style="letter-spacing: 0.5px;">Staff / Faculty</div>
+                <span class="badge bg-purple-subtle text-purple stat-card-hint" style="color: #c084fc;"><i class="fas fa-list-ul me-1"></i>View List</span>
+            </div>
+            <div class="fs-3 fw-bold text-white mt-1">{{ total_staff }}</div>
+            <div class="stat-icon" style="background: rgba(139, 92, 246, 0.15); color: #a78bfa;">
+                <i class="fas fa-chalkboard-user"></i>
+            </div>
+        </button>
+    </div>
+    <div class="col-12 col-sm-6 col-lg-3">
+        <button type="button" class="stat-card stat-card-clickable" data-bs-toggle="modal" data-bs-target="#classroomsListModal" title="Click to view all classrooms">
+            <div class="d-flex justify-content-between align-items-center">
+                <div class="text-muted small fw-bold text-uppercase" style="letter-spacing: 0.5px;">Classrooms</div>
+                <span class="badge bg-success-subtle text-success stat-card-hint"><i class="fas fa-list-ul me-1"></i>View List</span>
+            </div>
+            <div class="fs-3 fw-bold text-white mt-1">{{ total_classrooms }}</div>
+            <div class="stat-icon" style="background: rgba(16, 185, 129, 0.15); color: #34d399;">
+                <i class="fas fa-school"></i>
+            </div>
+        </button>
+    </div>
+    <div class="col-12 col-sm-6 col-lg-3">
+        <button type="button" class="stat-card stat-card-clickable" data-bs-toggle="modal" data-bs-target="#pendingRemovalsModal" title="Click to review pending removal requests">
+            <div class="d-flex justify-content-between align-items-center">
+                <div class="text-muted small fw-bold text-uppercase" style="letter-spacing: 0.5px;">Pending Removals</div>
+                {% if pending_removals_count > 0 %}
+                <span class="badge bg-warning text-dark stat-card-hint"><i class="fas fa-bolt me-1"></i>Action Req.</span>
+                {% else %}
+                <span class="badge bg-secondary text-light stat-card-hint"><i class="fas fa-list-ul me-1"></i>View Queue</span>
+                {% endif %}
+            </div>
+            <div class="fs-3 fw-bold text-white mt-1">{{ pending_removals_count }}</div>
+            <div class="stat-icon" style="background: rgba(245, 158, 11, 0.15); color: #fbbf24;">
+                <i class="fas fa-user-clock"></i>
+            </div>
+        </button>
+    </div>
+</div>
+
+<!-- Pending Approvals & Removal Queue Panel -->
+<div class="glass-card p-4 mb-4" id="approvalsQueueSection">
+    <div class="d-flex justify-content-between align-items-center mb-3">
+        <div>
+            <h5 class="fw-bold text-white mb-0">
+                <i class="fas fa-user-shield text-warning me-2"></i>Pending Approvals &amp; Removal Queue
+            </h5>
+            <small class="text-secondary">Review faculty-submitted student removal requests requiring administrator verification</small>
+        </div>
+        <div class="d-flex align-items-center gap-2">
+            {% if pending_removals_count > 0 %}
+            <span class="badge bg-warning text-dark fw-bold px-3 py-1 rounded-pill">{{ pending_removals_count }} Pending Action</span>
+            {% else %}
+            <span class="badge bg-success-subtle text-success fw-bold px-3 py-1 rounded-pill"><i class="fas fa-check-circle me-1"></i>All Clear</span>
+            {% endif %}
+            <a href="{{ url_for('admin_removal_requests') }}" class="btn btn-sm btn-outline-custom ms-2">Full Queue &rarr;</a>
+        </div>
+    </div>
+
+    {% if pending_removals_list and pending_removals_list|length > 0 %}
+    <div class="table-responsive">
+        <table class="table table-custom align-middle mb-0">
+            <thead>
+                <tr>
+                    <th class="ps-3">Submitted</th>
+                    <th>Requesting Staff</th>
+                    <th>Target Student</th>
+                    <th>Classroom</th>
+                    <th>Reason</th>
+                    <th class="text-end pe-3">Approval Action</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for req in pending_removals_list %}
+                <tr>
+                    <td class="ps-3 text-muted small">{{ req.created_at.strftime('%Y-%m-%d %H:%M') }}</td>
+                    <td>
+                        <span class="fw-bold text-white">{{ req.staff_member.full_name or req.staff_member.username }}</span>
+                        <div class="text-muted small">@{{ req.staff_member.username }}</div>
+                    </td>
+                    <td>
+                        <span class="fw-bold text-white">{{ req.student_member.full_name or req.student_member.username }}</span>
+                        <div class="text-muted small">{{ req.student_member.email }}</div>
+                    </td>
+                    <td>
+                        <span class="badge bg-dark border border-secondary text-info">{{ req.classroom.name }}</span>
+                    </td>
+                    <td>
+                        <span class="text-secondary small fst-italic">"{{ req.reason }}"</span>
+                    </td>
+                    <td class="text-end pe-3">
+                        <div class="d-inline-flex gap-2">
+                            <form method="POST" action="{{ url_for('admin_handle_removal_request', request_id=req.id) }}" style="display: inline;">
+                                <input type="hidden" name="action" value="approve">
+                                <input type="hidden" name="next" value="{{ url_for('admin_dashboard') }}">
+                                <button type="submit" class="btn btn-sm btn-success px-3" title="Approve Student Removal" onclick="return confirm('Confirm approval: Remove student {{ req.student_member.username }} from classroom {{ req.classroom.name }}?');">
+                                    <i class="fas fa-check me-1"></i>Approve
+                                </button>
+                            </form>
+                            <form method="POST" action="{{ url_for('admin_handle_removal_request', request_id=req.id) }}" style="display: inline;">
+                                <input type="hidden" name="action" value="reject">
+                                <input type="hidden" name="next" value="{{ url_for('admin_dashboard') }}">
+                                <button type="submit" class="btn btn-sm btn-outline-custom text-danger px-3" title="Reject Request" onclick="return confirm('Reject this student removal request?');">
+                                    <i class="fas fa-times me-1"></i>Reject
+                                </button>
+                            </form>
+                        </div>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% else %}
+    <div class="p-4 text-center text-muted border border-dashed rounded-3" style="border-color: var(--border-subtle) !important;">
+        <i class="fas fa-clipboard-check fs-2 text-secondary mb-2 opacity-50"></i>
+        <div class="fw-bold text-white mb-1">No Pending Removal Approvals</div>
+        <div class="small text-secondary">All classroom rosters are synchronized and no faculty removal requests are awaiting review.</div>
+    </div>
+    {% endif %}
+</div>
+
+<!-- Admin Quick Access Panels -->
+<div class="row g-3 mb-4">
+    <div class="col-12 col-md-4">
+        <div class="glass-card p-4 h-100 d-flex flex-column justify-content-between">
+            <div>
+                <h5 class="fw-bold text-white mb-2"><i class="fas fa-users-gear text-info me-2"></i>User Governance</h5>
+                <p class="text-secondary small mb-3">Manage accounts, toggle active/inactive status, permanently remove users, inspect credentials, and export to Excel.</p>
+            </div>
+            <a href="{{ url_for('admin_users') }}" class="btn btn-outline-custom w-100">
+                Manage Portal Users &rarr;
+            </a>
+        </div>
+    </div>
+
+    <div class="col-12 col-md-4">
+        <div class="glass-card p-4 h-100 d-flex flex-column justify-content-between">
+            <div>
+                <div class="d-flex justify-content-between align-items-center mb-2">
+                    <h5 class="fw-bold text-white mb-0"><i class="fas fa-user-minus text-warning me-2"></i>Removal Requests</h5>
+                    {% if pending_removals_count > 0 %}
+                    <span class="badge bg-warning text-dark fw-bold">{{ pending_removals_count }} Pending</span>
+                    {% endif %}
+                </div>
+                <p class="text-secondary small mb-3">Review historical and active student removal requests submitted by classroom faculty across cohorts.</p>
+            </div>
+            <a href="{{ url_for('admin_removal_requests') }}" class="btn btn-outline-custom w-100">
+                Review Removal Queue &rarr;
+            </a>
+        </div>
+    </div>
+
+    <div class="col-12 col-md-4">
+        <div class="glass-card p-4 h-100 d-flex flex-column justify-content-between">
+            <div>
+                <h5 class="fw-bold text-white mb-2"><i class="fas fa-receipt text-success me-2"></i>Audit Trail</h5>
+                <p class="text-secondary small mb-3">Inspect system audit logs, tracking logins, account deletion, joins, removals, and administrative events.</p>
+            </div>
+            <a href="{{ url_for('admin_audit_logs') }}" class="btn btn-outline-custom w-100">
+                View System Audit Logs &rarr;
+            </a>
+        </div>
+    </div>
+</div>
+
+<!-- Recent System Audit Logs Table -->
+<div class="glass-card p-4">
+    <div class="d-flex justify-content-between align-items-center mb-3">
+        <h5 class="fw-bold text-white mb-0"><i class="fas fa-clock-rotate-left text-primary me-2"></i>Recent Activity Log</h5>
+        <a href="{{ url_for('admin_audit_logs') }}" class="small text-primary text-decoration-none">View All Logs</a>
+    </div>
+
+    <div class="table-responsive">
+        <table class="table table-custom align-middle">
+            <thead>
+                <tr>
+                    <th class="ps-3">Timestamp</th>
+                    <th>Event Type</th>
+                    <th>Actor</th>
+                    <th>Description</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for log in recent_logs %}
+                <tr>
+                    <td class="ps-3 text-muted small">{{ log.created_at.strftime('%Y-%m-%d %H:%M:%S') }}</td>
+                    <td>
+                        <span class="badge bg-dark border border-secondary text-info small">{{ log.event_type }}</span>
+                    </td>
+                    <td>
+                        {% if log.actor %}
+                        <span class="fw-bold text-white">{{ log.actor.username }}</span>
+                        <span class="badge-role badge-role-{{ log.actor.role }} ms-1">{{ log.actor.role }}</span>
+                        {% else %}
+                        <span class="text-muted small">System</span>
+                        {% endif %}
+                    </td>
+                    <td class="text-secondary small">{{ log.description }}</td>
+                </tr>
+                {% else %}
+                <tr>
+                    <td colspan="4" class="text-center py-3 text-muted">No audit events recorded yet.</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<!-- ========================================================================= -->
+<!-- STAT CARD LIST MODALS -->
+<!-- ========================================================================= -->
+
+<!-- 1. Total Students List Modal -->
+<div class="modal fade" id="studentsListModal" tabindex="-1" aria-labelledby="studentsListModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered modal-xl">
+        <div class="modal-content glass-card border-0" style="background: var(--bg-card) !important;">
+            <div class="modal-header border-bottom" style="border-color: var(--border-subtle) !important;">
+                <div class="d-flex align-items-center gap-2">
+                    <div class="stat-icon position-static d-inline-flex" style="background: rgba(59, 130, 246, 0.15); color: #60a5fa; width: 38px; height: 38px;">
+                        <i class="fas fa-user-graduate"></i>
+                    </div>
+                    <div>
+                        <h5 class="modal-title fw-bold text-white mb-0" id="studentsListModalLabel">Enrolled Students Roster</h5>
+                        <small class="text-secondary">Complete directory of registered student accounts ({{ total_students }} total)</small>
+                    </div>
+                </div>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body p-4">
+                <div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
+                    <input type="text" class="form-control form-control-sm w-auto flex-grow-1" id="studentModalSearch" placeholder="🔍 Search students by name, username, or email..." onkeyup="filterAdminModalTable('studentModalSearch', 'studentModalTable')">
+                    <a href="{{ url_for('admin_users') }}" class="btn btn-sm btn-primary">
+                        <i class="fas fa-users-gear me-1"></i>Manage in User Directory
+                    </a>
+                </div>
+                <div class="table-responsive" style="max-height: 480px; overflow-y: auto;">
+                    <table class="table table-custom align-middle mb-0" id="studentModalTable">
+                        <thead>
+                            <tr>
+                                <th class="ps-3">Student</th>
+                                <th>Email</th>
+                                <th>Tracked Profiles</th>
+                                <th>Status</th>
+                                <th>Joined Date</th>
+                                <th class="text-end pe-3">Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for s in students_list %}
+                            <tr>
+                                <td class="ps-3">
+                                    <div class="d-flex align-items-center gap-2">
+                                        <div class="rounded-circle d-flex align-items-center justify-content-center fw-bold text-white" style="width: 34px; height: 34px; background: rgba(59, 130, 246, 0.25); border: 1px solid rgba(59, 130, 246, 0.4); font-size: 0.85rem;">
+                                            {{ (s.full_name or s.username)[:2]|upper }}
+                                        </div>
+                                        <div>
+                                            <span class="fw-bold text-white">{{ s.full_name or s.username }}</span>
+                                            <div class="text-muted small">@{{ s.username }}</div>
+                                        </div>
+                                    </div>
+                                </td>
+                                <td class="text-secondary small">{{ s.email }}</td>
+                                <td>
+                                    <span class="badge bg-dark border border-secondary text-info">
+                                        {{ s.platform_profiles.count() if s.platform_profiles else 0 }} Profiles
+                                    </span>
+                                </td>
+                                <td>
+                                    {% if s.is_active %}
+                                    <span class="badge bg-success-subtle text-success fw-bold">Active</span>
+                                    {% else %}
+                                    <span class="badge bg-danger-subtle text-danger fw-bold">Deactivated</span>
+                                    {% endif %}
+                                </td>
+                                <td class="text-muted small">{{ s.created_at.strftime('%Y-%m-%d') if s.created_at else 'N/A' }}</td>
+                                <td class="text-end pe-3">
+                                    <a href="{{ url_for('admin_users') }}" class="btn btn-sm btn-outline-custom" title="Manage User in Directory">
+                                        <i class="fas fa-gear text-info"></i>
+                                    </a>
+                                </td>
+                            </tr>
+                            {% else %}
+                            <tr>
+                                <td colspan="6" class="text-center py-4 text-muted">No student accounts registered yet.</td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+            <div class="modal-footer border-top" style="border-color: var(--border-subtle) !important;">
+                <button type="button" class="btn btn-outline-custom" data-bs-dismiss="modal">Close</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- 2. Staff / Faculty List Modal -->
+<div class="modal fade" id="staffListModal" tabindex="-1" aria-labelledby="staffListModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered modal-xl">
+        <div class="modal-content glass-card border-0" style="background: var(--bg-card) !important;">
+            <div class="modal-header border-bottom" style="border-color: var(--border-subtle) !important;">
+                <div class="d-flex align-items-center gap-2">
+                    <div class="stat-icon position-static d-inline-flex" style="background: rgba(139, 92, 246, 0.15); color: #a78bfa; width: 38px; height: 38px;">
+                        <i class="fas fa-chalkboard-user"></i>
+                    </div>
+                    <div>
+                        <h5 class="modal-title fw-bold text-white mb-0" id="staffListModalLabel">Faculty &amp; Staff Directory</h5>
+                        <small class="text-secondary">Instructors and staff members with classroom management permissions ({{ total_staff }} total)</small>
+                    </div>
+                </div>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body p-4">
+                <div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
+                    <input type="text" class="form-control form-control-sm w-auto flex-grow-1" id="staffModalSearch" placeholder="🔍 Search faculty by name, username, or email..." onkeyup="filterAdminModalTable('staffModalSearch', 'staffModalTable')">
+                    <button class="btn btn-sm btn-primary" data-bs-toggle="modal" data-bs-target="#createStaffModal">
+                        <i class="fas fa-user-plus me-1"></i>Provision New Staff
+                    </button>
+                </div>
+                <div class="table-responsive" style="max-height: 480px; overflow-y: auto;">
+                    <table class="table table-custom align-middle mb-0" id="staffModalTable">
+                        <thead>
+                            <tr>
+                                <th class="ps-3">Staff Member</th>
+                                <th>Email</th>
+                                <th>Classrooms Created</th>
+                                <th>Status</th>
+                                <th>Registered</th>
+                                <th class="text-end pe-3">Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for st in staff_list %}
+                            <tr>
+                                <td class="ps-3">
+                                    <div class="d-flex align-items-center gap-2">
+                                        <div class="rounded-circle d-flex align-items-center justify-content-center fw-bold text-white" style="width: 34px; height: 34px; background: rgba(139, 92, 246, 0.25); border: 1px solid rgba(139, 92, 246, 0.4); font-size: 0.85rem;">
+                                            {{ (st.full_name or st.username)[:2]|upper }}
+                                        </div>
+                                        <div>
+                                            <span class="fw-bold text-white">{{ st.full_name or st.username }}</span>
+                                            <div class="text-muted small">@{{ st.username }}</div>
+                                        </div>
+                                    </div>
+                                </td>
+                                <td class="text-secondary small">{{ st.email }}</td>
+                                <td>
+                                    <span class="badge bg-dark border border-secondary text-purple" style="color: #c084fc;">
+                                        {{ staff_classrooms_count.get(st.id, 0) }} Classrooms
+                                    </span>
+                                </td>
+                                <td>
+                                    {% if st.is_active %}
+                                    <span class="badge bg-success-subtle text-success fw-bold">Active</span>
+                                    {% else %}
+                                    <span class="badge bg-danger-subtle text-danger fw-bold">Deactivated</span>
+                                    {% endif %}
+                                </td>
+                                <td class="text-muted small">{{ st.created_at.strftime('%Y-%m-%d') if st.created_at else 'N/A' }}</td>
+                                <td class="text-end pe-3">
+                                    <a href="{{ url_for('admin_users') }}" class="btn btn-sm btn-outline-custom" title="Manage Staff in Directory">
+                                        <i class="fas fa-gear text-info"></i>
+                                    </a>
+                                </td>
+                            </tr>
+                            {% else %}
+                            <tr>
+                                <td colspan="6" class="text-center py-4 text-muted">No faculty/staff accounts created yet.</td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+            <div class="modal-footer border-top" style="border-color: var(--border-subtle) !important;">
+                <button type="button" class="btn btn-outline-custom" data-bs-dismiss="modal">Close</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- 3. Classrooms List Modal -->
+<div class="modal fade" id="classroomsListModal" tabindex="-1" aria-labelledby="classroomsListModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered modal-xl">
+        <div class="modal-content glass-card border-0" style="background: var(--bg-card) !important;">
+            <div class="modal-header border-bottom" style="border-color: var(--border-subtle) !important;">
+                <div class="d-flex align-items-center gap-2">
+                    <div class="stat-icon position-static d-inline-flex" style="background: rgba(16, 185, 129, 0.15); color: #34d399; width: 38px; height: 38px;">
+                        <i class="fas fa-school"></i>
+                    </div>
+                    <div>
+                        <h5 class="modal-title fw-bold text-white mb-0" id="classroomsListModalLabel">Global Classrooms Directory</h5>
+                        <small class="text-secondary">All active and archived classroom cohorts across the institution ({{ total_classrooms }} total)</small>
+                    </div>
+                </div>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body p-4">
+                <div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
+                    <input type="text" class="form-control form-control-sm w-auto flex-grow-1" id="classroomModalSearch" placeholder="🔍 Search classrooms by name or instructor..." onkeyup="filterAdminModalTable('classroomModalSearch', 'classroomModalTable')">
+                </div>
+                <div class="table-responsive" style="max-height: 480px; overflow-y: auto;">
+                    <table class="table table-custom align-middle mb-0" id="classroomModalTable">
+                        <thead>
+                            <tr>
+                                <th class="ps-3">Classroom Name</th>
+                                <th>Instructor / Creator</th>
+                                <th>Enrolled Students</th>
+                                <th>Status</th>
+                                <th>Created Date</th>
+                                <th class="text-end pe-3">Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for c in classrooms_list %}
+                            <tr>
+                                <td class="ps-3">
+                                    <span class="fw-bold text-white">{{ c.name }}</span>
+                                    {% if c.description %}
+                                    <div class="text-secondary small text-truncate" style="max-width: 260px;">{{ c.description }}</div>
+                                    {% endif %}
+                                </td>
+                                <td>
+                                    <span class="text-white">{{ c.staff.full_name or c.staff.username if c.staff else 'Faculty ID #' ~ c.staff_id }}</span>
+                                </td>
+                                <td>
+                                    <span class="badge bg-dark border border-secondary text-info">
+                                        {{ c.active_students_count() }} Students
+                                    </span>
+                                </td>
+                                <td>
+                                    {% if c.status == 'active' %}
+                                    <span class="badge bg-success-subtle text-success fw-bold">Active</span>
+                                    {% else %}
+                                    <span class="badge bg-secondary text-light fw-bold">Archived</span>
+                                    {% endif %}
+                                </td>
+                                <td class="text-muted small">{{ c.created_at.strftime('%Y-%m-%d') if c.created_at else 'N/A' }}</td>
+                                <td class="text-end pe-3">
+                                    <a href="{{ url_for('staff_classroom_detail', classroom_id=c.id) }}" class="btn btn-sm btn-outline-custom" title="View Classroom Roster">
+                                        <i class="fas fa-users-viewfinder text-primary me-1"></i>Roster
+                                    </a>
+                                </td>
+                            </tr>
+                            {% else %}
+                            <tr>
+                                <td colspan="6" class="text-center py-4 text-muted">No classrooms created yet.</td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+            <div class="modal-footer border-top" style="border-color: var(--border-subtle) !important;">
+                <button type="button" class="btn btn-outline-custom" data-bs-dismiss="modal">Close</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- 4. Pending Removals & Approvals Modal -->
+<div class="modal fade" id="pendingRemovalsModal" tabindex="-1" aria-labelledby="pendingRemovalsModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered modal-xl">
+        <div class="modal-content glass-card border-0" style="background: var(--bg-card) !important;">
+            <div class="modal-header border-bottom" style="border-color: var(--border-subtle) !important;">
+                <div class="d-flex align-items-center gap-2">
+                    <div class="stat-icon position-static d-inline-flex" style="background: rgba(245, 158, 11, 0.15); color: #fbbf24; width: 38px; height: 38px;">
+                        <i class="fas fa-user-clock"></i>
+                    </div>
+                    <div>
+                        <h5 class="modal-title fw-bold text-white mb-0" id="pendingRemovalsModalLabel">Pending Approvals &amp; Removal Requests</h5>
+                        <small class="text-secondary">Review, approve, or reject student removal requests ({{ pending_removals_count }} pending)</small>
+                    </div>
+                </div>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body p-4">
+                <div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
+                    <input type="text" class="form-control form-control-sm w-auto flex-grow-1" id="removalModalSearch" placeholder="🔍 Search requests by student, faculty, or classroom..." onkeyup="filterAdminModalTable('removalModalSearch', 'removalModalTable')">
+                    <a href="{{ url_for('admin_removal_requests') }}" class="btn btn-sm btn-outline-custom">
+                        <i class="fas fa-list me-1"></i>View Full Historical Log
+                    </a>
+                </div>
+                <div class="table-responsive" style="max-height: 480px; overflow-y: auto;">
+                    <table class="table table-custom align-middle mb-0" id="removalModalTable">
+                        <thead>
+                            <tr>
+                                <th class="ps-3">Submitted</th>
+                                <th>Requesting Faculty</th>
+                                <th>Target Student</th>
+                                <th>Classroom</th>
+                                <th>Reason</th>
+                                <th>Status</th>
+                                <th class="text-end pe-3">Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for req in all_removals_list %}
+                            <tr>
+                                <td class="ps-3 text-muted small">{{ req.created_at.strftime('%Y-%m-%d %H:%M') }}</td>
+                                <td>
+                                    <span class="fw-bold text-white">{{ req.staff_member.full_name or req.staff_member.username }}</span>
+                                    <div class="text-muted small">@{{ req.staff_member.username }}</div>
+                                </td>
+                                <td>
+                                    <span class="fw-bold text-white">{{ req.student_member.full_name or req.student_member.username }}</span>
+                                    <div class="text-muted small">{{ req.student_member.email }}</div>
+                                </td>
+                                <td>
+                                    <span class="badge bg-dark border border-secondary text-info">{{ req.classroom.name }}</span>
+                                </td>
+                                <td>
+                                    <span class="text-secondary small fst-italic">"{{ req.reason }}"</span>
+                                </td>
+                                <td>
+                                    {% if req.status == 'pending' %}
+                                    <span class="badge bg-warning text-dark fw-bold">Pending Review</span>
+                                    {% elif req.status == 'approved' %}
+                                    <span class="badge bg-success-subtle text-success fw-bold">Approved</span>
+                                    {% else %}
+                                    <span class="badge bg-danger-subtle text-danger fw-bold">Rejected</span>
+                                    {% endif %}
+                                </td>
+                                <td class="text-end pe-3">
+                                    {% if req.status == 'pending' %}
+                                    <div class="d-inline-flex gap-2">
+                                        <form method="POST" action="{{ url_for('admin_handle_removal_request', request_id=req.id) }}" style="display: inline;">
+                                            <input type="hidden" name="action" value="approve">
+                                            <input type="hidden" name="next" value="{{ url_for('admin_dashboard') }}">
+                                            <button type="submit" class="btn btn-sm btn-success" title="Approve Removal" onclick="return confirm('Approve removal of this student?');">
+                                                <i class="fas fa-check me-1"></i>Approve
+                                            </button>
+                                        </form>
+                                        <form method="POST" action="{{ url_for('admin_handle_removal_request', request_id=req.id) }}" style="display: inline;">
+                                            <input type="hidden" name="action" value="reject">
+                                            <input type="hidden" name="next" value="{{ url_for('admin_dashboard') }}">
+                                            <button type="submit" class="btn btn-sm btn-outline-custom text-danger" title="Reject Request" onclick="return confirm('Reject this removal request?');">
+                                                <i class="fas fa-times me-1"></i>Reject
+                                            </button>
+                                        </form>
+                                    </div>
+                                    {% else %}
+                                    <span class="text-muted small">Completed</span>
+                                    {% endif %}
+                                </td>
+                            </tr>
+                            {% else %}
+                            <tr>
+                                <td colspan="7" class="text-center py-4 text-muted">No student removal requests in the queue.</td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+            <div class="modal-footer border-top" style="border-color: var(--border-subtle) !important;">
+                <button type="button" class="btn btn-outline-custom" data-bs-dismiss="modal">Close</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Create Staff Modal -->
+<div class="modal fade" id="createStaffModal" tabindex="-1" aria-labelledby="createStaffModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content glass-card border-0" style="background: var(--bg-card) !important;">
+            <div class="modal-header border-bottom" style="border-color: var(--border-subtle) !important;">
+                <h5 class="modal-title fw-bold text-white" id="createStaffModalLabel">
+                    <i class="fas fa-user-tie text-primary me-2"></i>Create Staff / Faculty Account
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <form method="POST" action="{{ url_for('admin_create_staff') }}">
+                <div class="modal-body p-4">
+                    <div class="mb-3">
+                        <label for="staffFullName" class="form-label">Full Name</label>
+                        <input type="text" class="form-control" id="staffFullName" name="full_name" placeholder="Dr. Sarah Mitchell" required autofocus>
+                    </div>
+
+                    <div class="mb-3">
+                        <label for="staffUsername" class="form-label">Username</label>
+                        <input type="text" class="form-control" id="staffUsername" name="username" placeholder="s_mitchell" required>
+                    </div>
+
+                    <div class="mb-3">
+                        <label for="staffEmail" class="form-label">Email Address</label>
+                        <input type="email" class="form-control" id="staffEmail" name="email" placeholder="sarah.m@university.edu" required>
+                    </div>
+
+                    <div class="mb-3">
+                        <label for="staffPassword" class="form-label">Initial Password</label>
+                        <input type="password" class="form-control" id="staffPassword" name="password" placeholder="At least 6 characters" required minlength="6">
+                    </div>
+                </div>
+                <div class="modal-footer border-top" style="border-color: var(--border-subtle) !important;">
+                    <button type="button" class="btn btn-outline-custom" data-bs-dismiss="modal">Cancel</button>
+                    <button type="submit" class="btn btn-primary">Provision Staff Account</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<script>
+function filterAdminModalTable(inputId, tableId) {
+    const input = document.getElementById(inputId);
+    const filter = input.value.toLowerCase();
+    const table = document.getElementById(tableId);
+    const trs = table.getElementsByTagName('tr');
+
+    for (let i = 1; i < trs.length; i++) {
+        const text = trs[i].innerText.toLowerCase();
+        trs[i].style.display = text.includes(filter) ? '' : 'none';
+    }
+}
+</script>
+{% endblock %}

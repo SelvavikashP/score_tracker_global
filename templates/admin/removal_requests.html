@@ -1,0 +1,93 @@
+{% extends "layout.html" %}
+
+{% block title %}Removal Requests Queue — Admin Portal{% endblock %}
+
+{% block content %}
+<div class="row align-items-center mb-4 g-3">
+    <div class="col-lg-7">
+        <div class="d-flex align-items-center gap-2 mb-1">
+            <a href="{{ url_for('admin_dashboard') }}" class="btn btn-sm btn-outline-custom p-1 px-2" title="Back to Admin Portal">
+                <i class="fas fa-arrow-left"></i>
+            </a>
+            <span class="badge bg-warning-subtle text-warning fw-bold px-3 py-1 rounded-pill">Governance Queue</span>
+        </div>
+        <h1 class="fw-black mb-1 display-6">Student Removal Requests</h1>
+        <p class="text-secondary small mb-0">Review, approve, or reject classroom removal requests submitted by faculty</p>
+    </div>
+</div>
+
+<!-- Requests Table Card -->
+<div class="glass-card p-4">
+    <div class="table-responsive">
+        <table class="table table-custom align-middle">
+            <thead>
+                <tr>
+                    <th class="ps-3">Submitted</th>
+                    <th>Requesting Staff</th>
+                    <th>Target Student</th>
+                    <th>Classroom</th>
+                    <th>Reason</th>
+                    <th>Status</th>
+                    <th class="text-end pe-3">Actions</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for req in requests %}
+                <tr>
+                    <td class="ps-3 text-muted small">{{ req.created_at.strftime('%Y-%m-%d %H:%M') }}</td>
+                    <td>
+                        <span class="fw-bold text-white">{{ req.staff_member.full_name or req.staff_member.username }}</span>
+                        <div class="text-muted small">@{{ req.staff_member.username }}</div>
+                    </td>
+                    <td>
+                        <span class="fw-bold text-white">{{ req.student_member.full_name or req.student_member.username }}</span>
+                        <div class="text-muted small">{{ req.student_member.email }}</div>
+                    </td>
+                    <td>
+                        <span class="badge bg-dark border border-secondary text-info">{{ req.classroom.name }}</span>
+                    </td>
+                    <td>
+                        <span class="text-secondary small fst-italic">"{{ req.reason }}"</span>
+                    </td>
+                    <td>
+                        {% if req.status == 'pending' %}
+                        <span class="badge bg-warning text-dark fw-bold">Pending Review</span>
+                        {% elif req.status == 'approved' %}
+                        <span class="badge bg-success-subtle text-success fw-bold">Approved</span>
+                        {% else %}
+                        <span class="badge bg-danger-subtle text-danger fw-bold">Rejected</span>
+                        {% endif %}
+                    </td>
+                    <td class="text-end pe-3">
+                        {% if req.status == 'pending' %}
+                        <div class="d-inline-flex gap-2">
+                            <form method="POST" action="{{ url_for('admin_handle_removal_request', request_id=req.id) }}" style="display: inline;">
+                                <input type="hidden" name="action" value="approve">
+                                <button type="submit" class="btn btn-sm btn-success" title="Approve Removal" onclick="return confirm('Approve removal of this student from the classroom?');">
+                                    <i class="fas fa-check me-1"></i>Approve
+                                </button>
+                            </form>
+                            <form method="POST" action="{{ url_for('admin_handle_removal_request', request_id=req.id) }}" style="display: inline;">
+                                <input type="hidden" name="action" value="reject">
+                                <button type="submit" class="btn btn-sm btn-outline-custom text-danger" title="Reject Request" onclick="return confirm('Reject this removal request?');">
+                                    <i class="fas fa-times me-1"></i>Reject
+                                </button>
+                            </form>
+                        </div>
+                        {% else %}
+                        <div class="text-muted small">
+                            Reviewed by {{ req.reviewer.username if req.reviewer else 'Admin' }}
+                        </div>
+                        {% endif %}
+                    </td>
+                </tr>
+                {% else %}
+                <tr>
+                    <td colspan="7" class="text-center py-4 text-muted">No student removal requests in queue.</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endblock %}

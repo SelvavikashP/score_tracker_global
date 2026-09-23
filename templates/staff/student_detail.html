@@ -1,0 +1,232 @@
+{% extends "layout.html" %}
+
+{% block title %}Student Performance Analytics — {{ student.full_name or student.username }}{% endblock %}
+
+{% block content %}
+<div class="row align-items-center mb-4 g-3">
+    <div class="col-lg-7">
+        <div class="d-flex align-items-center gap-2 mb-1">
+            <button onclick="history.back()" class="btn btn-sm btn-outline-custom p-1 px-2" title="Go Back">
+                <i class="fas fa-arrow-left"></i>
+            </button>
+            <span class="badge bg-purple-subtle text-purple fw-bold px-3 py-1 rounded-pill" style="background: rgba(139, 92, 246, 0.15); color: #a78bfa;">Student Analytics</span>
+        </div>
+        <h1 class="fw-black mb-1 display-6">{{ student.full_name or student.username }}</h1>
+        <p class="text-secondary small mb-0">
+            @{{ student.username }} &bull; {{ student.email }} 
+            {% if student.student_identifier %}&bull; ID: <strong>{{ student.student_identifier }}</strong>{% endif %}
+        </p>
+    </div>
+    <div class="col-lg-5 text-lg-end">
+        <div class="d-flex flex-wrap gap-2 justify-content-lg-end">
+            <a href="{{ url_for('staff_sync_student', student_id=student.id) }}" class="btn btn-outline-custom">
+                <i class="fas fa-sync-alt text-primary me-1"></i>Sync Stats
+            </a>
+            <a href="{{ url_for('download_student_report', student_id=student.id) }}" class="btn btn-outline-custom">
+                <i class="fas fa-file-excel text-success me-1"></i>Export (.xlsx)
+            </a>
+        </div>
+    </div>
+</div>
+
+<!-- Connected Platform Profiles -->
+<div class="mb-4">
+    <h5 class="fw-bold text-white mb-3"><i class="fas fa-laptop-code text-info me-2"></i>Platform Profiles</h5>
+    <div class="row g-3">
+        {% for p in profiles %}
+        <div class="col-12 col-md-6 col-xl-4">
+            <div class="glass-card p-3 h-100">
+                <div class="d-flex justify-content-between align-items-center mb-2">
+                    <span class="badge-platform bg-platform-{{ p.platform.lower() }}">
+                        {{ p.platform }}
+                    </span>
+                    <a href="{{ p.profile_url }}" target="_blank" rel="noopener noreferrer" class="small text-secondary hover-glow">
+                        <i class="fas fa-arrow-up-right-from-square"></i>
+                    </a>
+                </div>
+                <h5 class="fw-bold text-white mb-2">{{ p.handle }}</h5>
+                <div class="d-flex justify-content-between align-items-center py-2 px-3 rounded-3 mb-2" style="background: var(--bg-surface); border: 1px solid var(--border-subtle);">
+                    <div>
+                        <div class="text-muted small" style="font-size: 0.7rem;">Rating / Title</div>
+                        <div class="fw-bold fs-6 text-white">{{ p.rating if p.rating > 0 else 'Unrated' }}</div>
+                        <div class="small fw-semibold" style="color: var(--accent-cyan); font-size: 0.75rem;">{{ p.rank }}</div>
+                    </div>
+                    <div class="text-end">
+                        <div class="text-muted small" style="font-size: 0.7rem;">Solved / Contests</div>
+                        <div class="fw-bold fs-6 text-white">{{ p.recent_problems }} <span class="small text-muted">solved</span></div>
+                        <div class="small text-muted" style="font-size: 0.75rem;">{{ p.total_contests }} contests</div>
+                    </div>
+                </div>
+                <div class="text-muted small" style="font-size: 0.75rem;">
+                    Last synced: {{ p.last_synced_at.strftime('%Y-%m-%d %H:%M') if p.last_synced_at else 'Never' }}
+                </div>
+            </div>
+        </div>
+        {% else %}
+        <div class="col-12">
+            <div class="glass-card p-4 text-center text-muted">No platform profiles registered for this student.</div>
+        </div>
+        {% endfor %}
+    </div>
+</div>
+
+<!-- Progress Charts -->
+<div class="row g-3 mb-4">
+    <div class="col-12 col-lg-6">
+        <div class="glass-card p-4 h-100">
+            <div class="d-flex justify-content-between align-items-center mb-3">
+                <h5 class="fw-bold text-white mb-0"><i class="fas fa-chart-line text-primary me-2"></i>Rating History</h5>
+                <span class="badge bg-dark border border-secondary text-secondary small">Daily Snapshots</span>
+            </div>
+            <div style="height: 240px; position: relative;">
+                <canvas id="studentRatingChart"></canvas>
+            </div>
+        </div>
+    </div>
+    <div class="col-12 col-lg-6">
+        <div class="glass-card p-4 h-100">
+            <div class="d-flex justify-content-between align-items-center mb-3">
+                <h5 class="fw-bold text-white mb-0"><i class="fas fa-code text-success me-2"></i>Problems Solved Trend</h5>
+                <span class="badge bg-dark border border-secondary text-secondary small">Cumulative Solved</span>
+            </div>
+            <div style="height: 240px; position: relative;">
+                <canvas id="studentProblemsChart"></canvas>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Daily Performance Snapshots History Table -->
+<div class="glass-card p-4">
+    <div class="d-flex justify-content-between align-items-center mb-3">
+        <h5 class="fw-bold text-white mb-0"><i class="fas fa-calendar-days text-warning me-2"></i>Historical Daily Snapshots ({{ snapshots|length }})</h5>
+    </div>
+
+    <div class="table-responsive">
+        <table class="table table-custom align-middle">
+            <thead>
+                <tr>
+                    <th class="ps-3">Date</th>
+                    <th>Platform</th>
+                    <th>Rating &amp; Title</th>
+                    <th>Rating Delta</th>
+                    <th>Problems Solved</th>
+                    <th>Contests</th>
+                    <th class="text-end pe-3">Calculated Score</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for s in snapshots %}
+                <tr>
+                    <td class="ps-3">
+                        <span class="fw-bold text-white">{{ s.snapshot_date.strftime('%Y-%m-%d') }}</span>
+                    </td>
+                    <td>
+                        <span class="badge-platform bg-platform-{{ s.platform.lower() }}">{{ s.platform }}</span>
+                    </td>
+                    <td>
+                        <div class="fw-bold text-white">{{ s.rating }}</div>
+                        <div class="small text-muted">{{ s.rank }}</div>
+                    </td>
+                    <td>
+                        {% if s.rating_delta > 0 %}
+                        <span class="badge bg-success-subtle text-success fw-bold">+{{ s.rating_delta }}</span>
+                        {% elif s.rating_delta < 0 %}
+                        <span class="badge bg-danger-subtle text-danger fw-bold">{{ s.rating_delta }}</span>
+                        {% else %}
+                        <span class="text-muted small">0</span>
+                        {% endif %}
+                    </td>
+                    <td>
+                        <div class="fw-bold text-white">{{ "{:,}".format(s.problems_solved) }}</div>
+                        {% if s.problems_solved_delta > 0 %}
+                        <span class="badge bg-success-subtle text-success small">+{{ s.problems_solved_delta }} today</span>
+                        {% endif %}
+                    </td>
+                    <td>
+                        <div class="fw-bold text-white">{{ s.contests }}</div>
+                    </td>
+                    <td class="text-end pe-3">
+                        <span class="badge px-3 py-1 rounded-pill" style="background: rgba(59, 130, 246, 0.15); color: #60a5fa; border: 1px solid rgba(59, 130, 246, 0.3);">
+                            {{ "{:,.1f}".format(s.calculated_score) }} pts
+                        </span>
+                    </td>
+                </tr>
+                {% else %}
+                <tr>
+                    <td colspan="7" class="text-center py-4 text-muted">No daily snapshots recorded yet for this student.</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    document.addEventListener('DOMContentLoaded', () => {
+        const dates = {{ chart_dates | tojson }};
+        const ratings = {{ chart_ratings | tojson }};
+        const solved = {{ chart_solved | tojson }};
+
+        const ctxR = document.getElementById('studentRatingChart');
+        if (ctxR && dates.length > 0) {
+            new Chart(ctxR, {
+                type: 'line',
+                data: {
+                    labels: dates,
+                    datasets: [{
+                        label: 'Max Rating',
+                        data: ratings,
+                        borderColor: '#8b5cf6',
+                        backgroundColor: 'rgba(139, 92, 246, 0.1)',
+                        tension: 0.3,
+                        fill: true,
+                        pointRadius: 4,
+                        pointBackgroundColor: '#8b5cf6'
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    scales: {
+                        y: { grid: { color: 'rgba(255, 255, 255, 0.06)' } },
+                        x: { grid: { display: false } }
+                    },
+                    plugins: { legend: { display: false } }
+                }
+            });
+        }
+
+        const ctxS = document.getElementById('studentProblemsChart');
+        if (ctxS && dates.length > 0) {
+            new Chart(ctxS, {
+                type: 'line',
+                data: {
+                    labels: dates,
+                    datasets: [{
+                        label: 'Total Solved',
+                        data: solved,
+                        borderColor: '#10b981',
+                        backgroundColor: 'rgba(16, 185, 129, 0.1)',
+                        tension: 0.3,
+                        fill: true,
+                        pointRadius: 4,
+                        pointBackgroundColor: '#10b981'
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    scales: {
+                        y: { grid: { color: 'rgba(255, 255, 255, 0.06)' } },
+                        x: { grid: { display: false } }
+                    },
+                    plugins: { legend: { display: false } }
+                }
+            });
+        }
+    });
+</script>
+{% endblock %}

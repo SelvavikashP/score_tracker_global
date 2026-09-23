@@ -1,0 +1,330 @@
+{% extends "layout.html" %}
+
+{% block title %}Student Dashboard — {{ student.full_name or student.username }}{% endblock %}
+
+{% block content %}
+<div class="row align-items-center mb-4 g-3">
+    <div class="col-lg-7">
+        <span class="badge bg-primary-subtle text-primary mb-1 fw-bold px-3 py-1 rounded-pill">Student Portal</span>
+        <h1 class="fw-black mb-1 display-6">{{ student.full_name or student.username }}</h1>
+        <p class="text-secondary small mb-0">
+            {% if student.student_identifier %}<span>ID: <strong>{{ student.student_identifier }}</strong> &bull; </span>{% endif %}
+            Tracked Coding Platforms &amp; Historical Performance
+        </p>
+    </div>
+    <div class="col-lg-5 text-lg-end">
+        <div class="d-flex flex-wrap gap-2 justify-content-lg-end">
+            <a href="{{ url_for('student_sync_profiles') }}" class="btn btn-outline-custom" title="Synchronize all connected platform handles">
+                <i class="fas fa-sync-alt text-primary"></i>Sync Stats
+            </a>
+            <a href="{{ url_for('download_student_report', student_id=student.id) }}" class="btn btn-outline-custom" title="Download your complete performance spreadsheet">
+                <i class="fas fa-file-excel text-success"></i>Export (.xlsx)
+            </a>
+            <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#addProfileModal">
+                <i class="fas fa-plus"></i>Connect Profile
+            </button>
+        </div>
+    </div>
+</div>
+
+<!-- Quick Statistics Overview -->
+<div class="row g-3 mb-4">
+    <div class="col-12 col-sm-6 col-lg-3">
+        <div class="stat-card">
+            <div class="text-muted small fw-bold text-uppercase" style="letter-spacing: 0.5px;">Peak Rating</div>
+            <div class="fs-3 fw-bold text-white mt-1">{{ stats.top_rating }}</div>
+            <div class="stat-icon" style="background: rgba(59, 130, 246, 0.15); color: #60a5fa;">
+                <i class="fas fa-trophy"></i>
+            </div>
+        </div>
+    </div>
+    <div class="col-12 col-sm-6 col-lg-3">
+        <div class="stat-card">
+            <div class="text-muted small fw-bold text-uppercase" style="letter-spacing: 0.5px;">Problems Solved</div>
+            <div class="fs-3 fw-bold text-white mt-1">{{ "{:,}".format(stats.total_solved) }}</div>
+            <div class="stat-icon" style="background: rgba(16, 185, 129, 0.15); color: #34d399;">
+                <i class="fas fa-check-double"></i>
+            </div>
+        </div>
+    </div>
+    <div class="col-12 col-sm-6 col-lg-3">
+        <div class="stat-card">
+            <div class="text-muted small fw-bold text-uppercase" style="letter-spacing: 0.5px;">Contests Attended</div>
+            <div class="fs-3 fw-bold text-white mt-1">{{ stats.total_contests }}</div>
+            <div class="stat-icon" style="background: rgba(245, 158, 11, 0.15); color: #fbbf24;">
+                <i class="fas fa-flag-checkered"></i>
+            </div>
+        </div>
+    </div>
+    <div class="col-12 col-sm-6 col-lg-3">
+        <div class="stat-card">
+            <div class="text-muted small fw-bold text-uppercase" style="letter-spacing: 0.5px;">Active Classrooms</div>
+            <div class="fs-3 fw-bold text-white mt-1">{{ classrooms|length }}</div>
+            <div class="stat-icon" style="background: rgba(139, 92, 246, 0.15); color: #a78bfa;">
+                <i class="fas fa-chalkboard-user"></i>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Connected Platform Profiles -->
+<div class="mb-4">
+    <div class="d-flex justify-content-between align-items-center mb-3">
+        <h4 class="fw-bold mb-0 text-white">Connected Platforms</h4>
+        <button class="btn btn-sm btn-outline-custom" data-bs-toggle="modal" data-bs-target="#addProfileModal">
+            <i class="fas fa-plus me-1"></i>Add Platform
+        </button>
+    </div>
+
+    <div class="row g-3">
+        {% for profile in profiles %}
+        <div class="col-12 col-md-6 col-xl-4">
+            <div class="glass-card p-3 h-100 position-relative">
+                <div class="d-flex justify-content-between align-items-start mb-2">
+                    <span class="badge-platform bg-platform-{{ profile.platform.lower() }}">
+                        {{ profile.platform }}
+                    </span>
+                    <div class="dropdown">
+                        <button class="btn btn-sm text-secondary p-0 shadow-none border-0" type="button" data-bs-toggle="dropdown">
+                            <i class="fas fa-ellipsis-vertical"></i>
+                        </button>
+                        <ul class="dropdown-menu dropdown-menu-end shadow" style="background: var(--bg-card); border: 1px solid var(--border-subtle);">
+                            <li>
+                                <a class="dropdown-item small text-primary" href="{{ url_for('student_sync_profile', profile_id=profile.id) }}">
+                                    <i class="fas fa-sync-alt me-2"></i>Sync Now
+                                </a>
+                            </li>
+                            <li>
+                                <a class="dropdown-item small text-danger" href="{{ url_for('student_delete_profile', profile_id=profile.id) }}" onclick="return confirm('Disconnect {{ profile.platform }} profile ({{ profile.handle }})?');">
+                                    <i class="fas fa-trash-alt me-2"></i>Remove Profile
+                                </a>
+                            </li>
+                        </ul>
+                    </div>
+                </div>
+
+                <div class="d-flex align-items-center gap-2 mb-2">
+                    <h5 class="fw-bold text-white mb-0">{{ profile.handle }}</h5>
+                    <a href="{{ profile.profile_url }}" target="_blank" rel="noopener noreferrer" class="small text-secondary hover-glow" title="Open Public Profile">
+                        <i class="fas fa-arrow-up-right-from-square"></i>
+                    </a>
+                </div>
+
+                <div class="d-flex justify-content-between align-items-center py-2 px-3 rounded-3 mb-2" style="background: var(--bg-surface); border: 1px solid var(--border-subtle);">
+                    <div>
+                        <div class="text-muted small" style="font-size: 0.72rem;">Rating / Title</div>
+                        <div class="fw-bold fs-6 text-white">{{ profile.rating if profile.rating > 0 else 'Unrated' }}</div>
+                        <div class="small fw-semibold" style="color: var(--accent-cyan); font-size: 0.75rem;">{{ profile.rank }}</div>
+                    </div>
+                    <div class="text-end">
+                        <div class="text-muted small" style="font-size: 0.72rem;">Solved / Contests</div>
+                        <div class="fw-bold fs-6 text-white">{{ profile.recent_problems }} <span class="small text-muted">solved</span></div>
+                        <div class="small text-muted" style="font-size: 0.75rem;">{{ profile.total_contests }} contests</div>
+                    </div>
+                </div>
+
+                <div class="d-flex justify-content-between align-items-center text-muted small" style="font-size: 0.75rem;">
+                    <span>
+                        {% if profile.sync_status == 'success' %}
+                        <i class="fas fa-check-circle text-success me-1"></i>Synced
+                        {% elif profile.sync_status == 'failed' %}
+                        <i class="fas fa-exclamation-triangle text-danger me-1" title="{{ profile.sync_error }}"></i>Failed
+                        {% else %}
+                        <i class="fas fa-clock text-warning me-1"></i>Pending
+                        {% endif %}
+                    </span>
+                    <span>{{ profile.last_synced_at.strftime('%Y-%m-%d %H:%M') if profile.last_synced_at else 'Never' }}</span>
+                </div>
+            </div>
+        </div>
+        {% else %}
+        <div class="col-12">
+            <div class="glass-card p-4 text-center">
+                <p class="text-secondary mb-3">No competitive programming platforms connected yet.</p>
+                <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#addProfileModal">
+                    <i class="fas fa-plus me-1"></i>Connect Your First Handle
+                </button>
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+</div>
+
+<!-- Performance History & Progress Charts -->
+<div class="row g-3 mb-4">
+    <div class="col-12 col-lg-6">
+        <div class="glass-card p-4 h-100">
+            <div class="d-flex justify-content-between align-items-center mb-3">
+                <h5 class="fw-bold text-white mb-0"><i class="fas fa-chart-line text-primary me-2"></i>Rating History</h5>
+                <span class="badge bg-dark border border-secondary text-secondary small">Daily Snapshots</span>
+            </div>
+            <div style="height: 240px; position: relative;">
+                <canvas id="ratingChart"></canvas>
+            </div>
+        </div>
+    </div>
+    <div class="col-12 col-lg-6">
+        <div class="glass-card p-4 h-100">
+            <div class="d-flex justify-content-between align-items-center mb-3">
+                <h5 class="fw-bold text-white mb-0"><i class="fas fa-code text-success me-2"></i>Problems Solved Progression</h5>
+                <span class="badge bg-dark border border-secondary text-secondary small">Cumulative Solved</span>
+            </div>
+            <div style="height: 240px; position: relative;">
+                <canvas id="problemsChart"></canvas>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Assigned Classrooms -->
+<div class="glass-card p-4 mb-4">
+    <h4 class="fw-bold mb-3 text-white"><i class="fas fa-chalkboard-user text-info me-2"></i>My Classrooms</h4>
+    <div class="row g-3">
+        {% for cm in classrooms %}
+        {% set c = cm.classroom %}
+        <div class="col-12 col-md-6 col-lg-4">
+            <div class="p-3 rounded-3 h-100 d-flex flex-column justify-content-between" style="background: var(--bg-surface); border: 1px solid var(--border-subtle);">
+                <div>
+                    <h6 class="fw-bold text-white mb-1">{{ c.name }}</h6>
+                    <p class="text-secondary small mb-2">Instructor: {{ c.staff.full_name or c.staff.username }}</p>
+                    {% if c.description %}
+                    <p class="text-muted small mb-3">{{ c.description[:90] }}...</p>
+                    {% endif %}
+                </div>
+                <div>
+                    <a href="{{ url_for('student_classroom_leaderboard', classroom_id=c.id) }}" class="btn btn-sm btn-outline-custom w-100">
+                        <i class="fas fa-trophy text-warning me-1"></i>Classroom Leaderboard
+                    </a>
+                </div>
+            </div>
+        </div>
+        {% else %}
+        <div class="col-12">
+            <p class="text-muted small mb-0">You are not enrolled in any classrooms yet. Ask your instructor for a classroom join link!</p>
+        </div>
+        {% endfor %}
+    </div>
+</div>
+
+<!-- Add Profile Modal -->
+<div class="modal fade" id="addProfileModal" tabindex="-1" aria-labelledby="addProfileModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content glass-card border-0" style="background: var(--bg-card) !important;">
+            <div class="modal-header border-bottom" style="border-color: var(--border-subtle) !important;">
+                <h5 class="modal-title fw-bold text-white" id="addProfileModalLabel">
+                    <i class="fas fa-plus text-primary me-2"></i>Connect Platform Handle
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <form method="POST" action="{{ url_for('student_add_profile') }}" id="modalAddProfileForm">
+                <div class="modal-body p-4">
+                    <div class="mb-3">
+                        <label for="modalPlatform" class="form-label">Platform</label>
+                        <select class="form-select" id="modalPlatform" name="platform" required>
+                            <option value="Codeforces" selected>Codeforces</option>
+                            <option value="LeetCode">LeetCode</option>
+                            <option value="CodeChef">CodeChef</option>
+                            <option value="AtCoder">AtCoder</option>
+                            <option value="HackerRank">HackerRank</option>
+                        </select>
+                    </div>
+
+                    <div class="mb-3">
+                        <label for="modalHandle" class="form-label">Handle or Profile URL</label>
+                        <input type="text" class="form-control" id="modalHandle" name="profile_url" placeholder="e.g. tourist" required>
+                        <div class="form-text text-muted small mt-1" id="modalHint">
+                            Enter your platform username or full profile URL.
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer border-top" style="border-color: var(--border-subtle) !important;">
+                    <button type="button" class="btn btn-outline-custom" data-bs-dismiss="modal">Cancel</button>
+                    <button type="submit" class="btn btn-primary" id="modalSubmitBtn">
+                        <span id="modalBtnText">Connect &amp; Fetch</span>
+                        <span id="modalBtnSpinner" class="d-none"><span class="spinner-border spinner-border-sm me-1"></span>Syncing...</span>
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    document.addEventListener('DOMContentLoaded', () => {
+        // Chart rendering
+        const dates = {{ chart_dates | tojson }};
+        const ratings = {{ chart_ratings | tojson }};
+        const solved = {{ chart_solved | tojson }};
+
+        const ctxRating = document.getElementById('ratingChart');
+        if (ctxRating && dates.length > 0) {
+            new Chart(ctxRating, {
+                type: 'line',
+                data: {
+                    labels: dates,
+                    datasets: [{
+                        label: 'Max Rating',
+                        data: ratings,
+                        borderColor: '#3b82f6',
+                        backgroundColor: 'rgba(59, 130, 246, 0.1)',
+                        tension: 0.3,
+                        fill: true,
+                        pointRadius: 4,
+                        pointBackgroundColor: '#3b82f6'
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    scales: {
+                        y: { grid: { color: 'rgba(255, 255, 255, 0.06)' } },
+                        x: { grid: { display: false } }
+                    },
+                    plugins: { legend: { display: false } }
+                }
+            });
+        }
+
+        const ctxSolved = document.getElementById('problemsChart');
+        if (ctxSolved && dates.length > 0) {
+            new Chart(ctxSolved, {
+                type: 'line',
+                data: {
+                    labels: dates,
+                    datasets: [{
+                        label: 'Total Solved',
+                        data: solved,
+                        borderColor: '#10b981',
+                        backgroundColor: 'rgba(16, 185, 129, 0.1)',
+                        tension: 0.3,
+                        fill: true,
+                        pointRadius: 4,
+                        pointBackgroundColor: '#10b981'
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    scales: {
+                        y: { grid: { color: 'rgba(255, 255, 255, 0.06)' } },
+                        x: { grid: { display: false } }
+                    },
+                    plugins: { legend: { display: false } }
+                }
+            });
+        }
+
+        // Form submit spinner
+        const form = document.getElementById('modalAddProfileForm');
+        if (form) {
+            form.addEventListener('submit', () => {
+                document.getElementById('modalBtnText').classList.add('d-none');
+                document.getElementById('modalBtnSpinner').classList.remove('d-none');
+                document.getElementById('modalSubmitBtn').disabled = true;
+            });
+        }
+    });
+</script>
+{% endblock %}
