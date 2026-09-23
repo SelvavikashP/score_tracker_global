@@ -78,7 +78,7 @@ def index():
             return redirect(url_for('staff_dashboard'))
         elif user.role == 'admin':
             return redirect(url_for('admin_dashboard'))
-    return redirect(url_for('public_leaderboard'))
+    return redirect(url_for('login'))
 
 @app.route('/leaderboard')
 def public_leaderboard():
