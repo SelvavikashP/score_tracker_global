@@ -45,4 +45,25 @@
             });
         });
     });
+
+    // Global helper to toggle password visibility
+    window.togglePasswordVisibility = function(inputId, triggerBtn) {
+        const input = typeof inputId === 'string' ? document.getElementById(inputId) : inputId;
+        if (!input) return;
+        const icon = triggerBtn.querySelector('i') || triggerBtn;
+        if (input.type === 'password') {
+            input.type = 'text';
+            if (icon) {
+                icon.classList.remove('fa-eye');
+                icon.classList.add('fa-eye-slash');
+            }
+        } else {
+            input.type = 'password';
+            if (icon) {
+                icon.classList.remove('fa-eye-slash');
+                icon.classList.add('fa-eye');
+            }
+        }
+    };
 })();
+
