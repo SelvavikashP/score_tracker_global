@@ -1,0 +1,59 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Environment variables & secrets
+.env
+.env.*
+!.env.example
+User_data/.secret_key
+
+# Databases & local sqlite files
+*.db
+*.sqlite
+*.sqlite3
+database.db
+User_data/*.db
+User_data/database.db
+User_data/database_backup.db
+
+# Dynamic exports and user data
+User_data/exports/
+User_data/*.xlsx
+User_data/*.json
+contest_data.xlsx
+users.json
+
+# Logs
+*.log
+logs/
+
+# IDE & Editor settings
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Virtual Environments
+venv/
+.venv/
+env/
+
+# Deployment & testing caches
+.pytest_cache/
+.coverage
+htmlcov/
+.vercel
+
+# Scratch, screenshots & legacy files
+index.html
+dump_db.py
+test_db.py
+test_mail.py
+test_app_integration.py
+test_suite.py
+deployment_guide.md
+assets/
+
+

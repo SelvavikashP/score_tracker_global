@@ -1,0 +1,12 @@
+flask
+flask-sqlalchemy
+requests
+pandas
+openpyxl
+flask-apscheduler
+python-dotenv
+beautifulsoup4
+gunicorn
+psycopg2-binary
+cryptography
+

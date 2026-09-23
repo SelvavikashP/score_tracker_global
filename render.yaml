@@ -1,0 +1,26 @@
+services:
+  - type: web
+    name: score-tracker-global
+    env: python
+    region: oregon
+    plan: free
+    buildCommand: pip install -r requirements.txt
+    startCommand: gunicorn --workers=2 --bind=0.0.0.0:$PORT app:app
+    envVars:
+      - key: SECRET_KEY
+        generateValue: true
+      - key: PYTHON_VERSION
+        value: 3.12.0
+      - key: DATABASE_URL
+        fromDatabase:
+          name: score-tracker-db
+          property: connectionString
+      - key: INITIAL_ADMIN_EMAIL
+        value: admin@university.edu
+      - key: INITIAL_ADMIN_PASSWORD
+        generateValue: true
+
+databases:
+  - name: score-tracker-db
+    plan: free
+    region: oregon
