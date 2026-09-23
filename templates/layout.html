@@ -121,6 +121,12 @@
                                     </div>
                                 </li>
                                 <li>
+                                    <a class="dropdown-item py-2 rounded text-white" href="{{ url_for('change_password') }}">
+                                        <i class="fas fa-key me-2 text-warning"></i>Change Password
+                                    </a>
+                                </li>
+                                <li><hr class="dropdown-divider" style="border-color: var(--border-subtle);"></li>
+                                <li>
                                     <a class="dropdown-item py-2 rounded text-danger" href="{{ url_for('logout') }}">
                                         <i class="fas fa-sign-out-alt me-2"></i>Sign Out
                                     </a>
@@ -169,8 +175,8 @@
                             </ul>
                         </li>
                         <li class="nav-item ms-lg-2">
-                            <a class="btn btn-primary btn-sm px-3" href="{{ url_for('signup') }}">
-                                <i class="fas fa-user-plus me-1"></i>Student Signup
+                            <a class="btn btn-primary btn-sm px-3" href="{{ url_for('login_student') }}">
+                                <i class="fas fa-sign-in-alt me-1"></i>Portal Sign In
                             </a>
                         </li>
                     {% endif %}

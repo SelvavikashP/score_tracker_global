@@ -71,7 +71,12 @@
                 </div>
 
                 <div class="mb-4">
-                    <label for="password" class="form-label">Password</label>
+                    <div class="d-flex justify-content-between align-items-center mb-2">
+                        <label for="password" class="form-label mb-0">Password</label>
+                        {% if active_role == 'student' %}
+                        <a href="{{ url_for('forgot_password') }}" class="text-primary text-decoration-none small">Forgot password?</a>
+                        {% endif %}
+                    </div>
                     <div class="position-relative">
                         <input type="password" class="form-control pe-5" id="password" name="password" placeholder="••••••••" required autocomplete="current-password">
                         <button type="button" class="btn position-absolute end-0 top-50 translate-middle-y password-toggle-btn me-2" onclick="togglePasswordVisibility('password', this)" tabindex="-1" title="Show / Hide Password" aria-label="Toggle password visibility">
@@ -93,13 +98,11 @@
             <div class="text-center pt-3 mt-3 border-top" style="border-color: var(--border-subtle) !important;">
                 {% if active_role == 'student' %}
                 <p class="text-secondary small mb-0">
-                    Are you a student without an account? 
-                    <a href="{{ url_for('signup') }}" class="text-primary text-decoration-none fw-bold ms-1">Register Here</a>
+                    <i class="fas fa-info-circle me-1"></i>Student accounts are provisioned directly by your course instructor. Default initial password: <code class="text-secondary">Student@123</code>
                 </p>
                 {% elif active_role == 'staff' %}
                 <p class="text-secondary small mb-0">
-                    New faculty member? 
-                    <a href="{{ url_for('signup', role='staff') }}" class="text-primary text-decoration-none fw-bold ms-1" style="color: #a78bfa !important;">Create Faculty Account</a>
+                    Faculty access is managed by portal administrators.
                 </p>
                 {% elif active_role == 'admin' %}
                 <p class="text-secondary small mb-0">

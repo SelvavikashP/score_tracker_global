@@ -1,11 +1,17 @@
 import os
+import io
 from datetime import datetime, timezone, timedelta
 from flask import Flask, render_template, request, redirect, url_for, flash, session, send_file, abort, jsonify, g
 from werkzeug.security import generate_password_hash, check_password_hash
 from flask_apscheduler import APScheduler
 
 from config import Config
-from models import db, User, Classroom, ClassroomMembership, PlatformProfile, PerformanceSnapshot, RemovalRequest, AuditLog
+from mongo_db import init_indexes, bootstrap_admin, ping_mongodb, get_snapshots_col, to_object_id
+from models_mongo import (
+    User, Classroom, ClassroomMembership, PlatformProfile,
+    PerformanceSnapshot, RemovalRequest, AuditLog, PasswordReset,
+    BulkImport, normalize_email
+)
 from auth_decorators import (
     login_required, role_required, get_current_user,
     verify_classroom_ownership, verify_classroom_access, verify_student_access
@@ -17,33 +23,45 @@ from sync_service import (
 )
 from scoring import compute_profile_score
 from excel_utils import generate_classroom_excel, generate_student_excel, generate_user_directory_excel
-from migration import run_database_migrations
+from bulk_import_service import parse_bulk_file, execute_bulk_enrollment, generate_bulk_result_excel
 from email_service import (
-    send_otp_email, send_welcome_email, send_classroom_enrolled_email,
+    send_welcome_email, send_classroom_enrolled_email,
     send_student_joined_staff_notification_email, send_removal_request_submitted_email,
-    send_removal_request_decision_email, send_password_reset_notification_email,
-    send_account_status_notification_email, is_smtp_configured
+    send_removal_request_decision_email, send_password_reset_token_email,
+    send_password_reset_notification_email, send_account_status_notification_email,
+    is_smtp_configured
 )
 
 app = Flask(__name__)
 app.config.from_object(Config)
 
-db.init_app(app)
 scheduler = APScheduler()
 
-# Initialize DB migrations & schema checks
-run_database_migrations(app)
+# Initialize MongoDB Atlas Indexes and Admin Bootstrap
+with app.app_context():
+    try:
+        init_indexes()
+        bootstrap_admin()
+    except Exception as e:
+        print(f"[!] Warning during MongoDB initialization: {e}")
 
 @app.before_request
 def load_user_context():
     g.current_user = get_current_user()
+    
+    # Enforce mandatory first-login password change for students
+    if g.current_user and g.current_user.role == 'student' and g.current_user.must_change_password:
+        allowed_endpoints = ['change_password', 'logout', 'static']
+        if request.endpoint and request.endpoint not in allowed_endpoints:
+            flash('Action Required: You must set your personal password before accessing the student portal.', 'warning')
+            return redirect(url_for('change_password'))
 
 # ---------------------------------------------------------
 # Error Handlers
 # ---------------------------------------------------------
 @app.errorhandler(400)
 def bad_request_error(e):
-    return render_template('errors/error.html', error_code=400, error_title="Bad Request", error_message="The request could not be processed due to malformed syntax."), 400
+    return render_template('errors/error.html', error_code=400, error_title="Bad Request", error_message="The request could not be processed due to invalid syntax."), 400
 
 @app.errorhandler(403)
 def forbidden_error(e):
@@ -55,15 +73,17 @@ def not_found_error(e):
 
 @app.errorhandler(500)
 def internal_server_error(e):
-    return render_template('errors/error.html', error_code=500, error_title="Server Error", error_message="An unexpected error occurred. Our team has been notified."), 500
+    return render_template('errors/error.html', error_code=500, error_title="Server Error", error_message="An unexpected server error occurred. Our team has been notified."), 500
 
 @app.route('/health')
 def health():
+    db_ok, db_status = ping_mongodb()
     return jsonify({
-        "status": "healthy",
-        "timestamp": datetime.now(timezone.utc).isoformat(),
-        "database": "connected"
-    }), 200
+        "status": "healthy" if db_ok else "degraded",
+        "database": "mongodb",
+        "database_status": db_status,
+        "timestamp": datetime.now(timezone.utc).isoformat()
+    }), (200 if db_ok else 503)
 
 # ---------------------------------------------------------
 # Public & Global Leaderboard Routes
@@ -82,12 +102,11 @@ def index():
 
 @app.route('/leaderboard')
 def public_leaderboard():
-    # Fetch active students with their platform profiles
-    students = User.query.filter_by(role='student', is_active=True).all()
+    students = User.find_all({'role': 'student', 'is_active': True})
     leaderboard_data = []
 
     for s in students:
-        profiles = PlatformProfile.query.filter_by(user_id=s.id).all()
+        profiles = PlatformProfile.find_by_user_id(s.id)
         peak_rating = max([p.rating for p in profiles], default=0)
         total_solved = sum([p.recent_problems for p in profiles])
         total_contests = sum([p.total_contests for p in profiles])
@@ -104,7 +123,6 @@ def public_leaderboard():
             "platform_slugs": platform_slugs
         })
 
-    # Sort descending by composite performance score
     leaderboard_data.sort(key=lambda x: (x['total_score'], x['peak_rating'], x['total_solved']), reverse=True)
     return render_template('index.html', leaderboard=leaderboard_data)
 
@@ -115,25 +133,24 @@ def handle_role_login(target_role=None):
     if get_current_user():
         return redirect(url_for('index'))
 
-    # Read role from query param, URL route, or form
     role = target_role or request.args.get('role') or 'student'
     if role not in ('student', 'staff', 'admin'):
         role = 'student'
 
     if request.method == 'POST':
-        email = (request.form.get('email') or '').strip().lower()
+        email_raw = (request.form.get('email') or '').strip()
+        norm_email = normalize_email(email_raw)
         password = (request.form.get('password') or '').strip()
         form_role = (request.form.get('target_role') or role).strip().lower()
 
-        user = User.query.filter(User.email.ilike(email)).first()
-        if user and check_password_hash(user.password_hash, password):
+        user = User.find_by_email(norm_email)
+        if user and user.check_password(password):
             if not user.is_active:
-                flash('Your account is deactivated. Please contact the portal administrator.', 'danger')
+                flash('Your account has been deactivated. Please contact the portal administrator.', 'danger')
                 return redirect(url_for('login', role=form_role))
 
             # Role verification check
             if form_role and user.role != form_role:
-                # User logged in via role-specific form with a different role
                 if form_role == 'admin' and user.role != 'admin':
                     flash(f'Access denied: Account "@{user.username}" does not have Administrator privileges.', 'danger')
                     return redirect(url_for('login_admin'))
@@ -141,39 +158,33 @@ def handle_role_login(target_role=None):
                     flash(f'Access denied: Account "@{user.username}" is not registered as Faculty/Staff.', 'danger')
                     return redirect(url_for('login_staff'))
 
-            # Check email verification for students and staff
-            if Config.REQUIRE_EMAIL_VERIFICATION and not user.is_email_verified and user.role != 'admin':
-                otp_code = user.generate_otp(Config.OTP_EXPIRE_MINUTES)
-                db.session.commit()
-                send_otp_email(user.email, user.full_name or user.username, otp_code)
-                session['pending_verification_user_id'] = user.id
-                session['pending_verification_email'] = user.email
-                if is_smtp_configured():
-                    flash('Please enter the 6-digit verification code sent to your email to continue.', 'info')
-                else:
-                    flash('Two-step verification required. Enter the verification code shown on screen to continue.', 'info')
-                return redirect(url_for('verify_otp'))
-
+            # Re-initialize session to prevent session fixation
+            session.clear()
             session.permanent = True
             session['user_id'] = user.id
             session['username'] = user.username
             session['role'] = user.role
-            user.last_login_at = datetime.now(timezone.utc)
-            db.session.commit()
+
+            user.update_last_login()
 
             AuditLog.log(
-                event_type='LOGIN',
-                description=f'User {user.username} ({user.role}) logged in successfully.',
+                event_type='LOGIN_SUCCESS',
+                description=f'User {user.email} ({user.role}) logged in successfully.',
                 actor_id=user.id,
+                actor_role=user.role,
                 ip_address=request.remote_addr
             )
 
+            # Check if student must change initial temporary password
+            if user.role == 'student' and user.must_change_password:
+                flash('Action Required: Please set a new personal password before proceeding.', 'warning')
+                return redirect(url_for('change_password'))
+
             flash(f'Welcome back, {user.full_name or user.username}!', 'success')
             next_url = request.args.get('next')
-            if next_url and next_url.startswith('/'):
+            if next_url and next_url.startswith('/') and not next_url.startswith('//'):
                 return redirect(next_url)
 
-            # Route to appropriate portal
             if user.role == 'student':
                 return redirect(url_for('student_dashboard'))
             elif user.role == 'staff':
@@ -182,7 +193,13 @@ def handle_role_login(target_role=None):
                 return redirect(url_for('admin_dashboard'))
             return redirect(url_for('index'))
         else:
-            flash('Invalid email or password. Please try again.', 'danger')
+            AuditLog.log(
+                event_type='LOGIN_FAILURE',
+                description=f'Failed login attempt for email: {email_raw}',
+                ip_address=request.remote_addr,
+                result='failure'
+            )
+            flash('Invalid email or password. Please check your credentials.', 'danger')
 
     return render_template('login.html', active_role=role)
 
@@ -204,184 +221,15 @@ def login_admin():
 
 @app.route('/signup', methods=['GET', 'POST'])
 def signup():
+    """
+    Public student registration is disabled in enterprise configuration.
+    Student accounts are provisioned directly by faculty/administrators.
+    """
     if get_current_user():
         return redirect(url_for('index'))
 
-    initial_role = request.args.get('role', 'student').strip().lower()
-    if initial_role not in ['student', 'staff']:
-        initial_role = 'student'
-
-    if request.method == 'POST':
-        full_name = (request.form.get('full_name') or '').strip()
-        username = (request.form.get('username') or '').strip()
-        student_id = (request.form.get('student_identifier') or '').strip()
-        email = (request.form.get('email') or '').strip().lower()
-        password = (request.form.get('password') or '').strip()
-        chosen_role = (request.form.get('role') or initial_role).strip().lower()
-        if chosen_role not in ['student', 'staff']:
-            chosen_role = 'student'
-
-        if not username or not email or not password:
-            flash('Username, email, and password are required.', 'danger')
-            return redirect(url_for('signup', role=chosen_role))
-
-        if len(password) < 6:
-            flash('Password must be at least 6 characters long.', 'warning')
-            return redirect(url_for('signup', role=chosen_role))
-
-        if User.query.filter(User.email.ilike(email)).first():
-            flash('An account with this email already exists. Please sign in.', 'warning')
-            return redirect(url_for('login_staff' if chosen_role == 'staff' else 'login_student'))
-
-        if User.query.filter(User.username.ilike(username)).first():
-            flash('Username is already taken. Please choose another username.', 'warning')
-            return redirect(url_for('signup', role=chosen_role))
-
-        new_user = User(
-            username=username,
-            full_name=full_name or username,
-            student_identifier=student_id or None if chosen_role == 'student' else None,
-            email=email,
-            password_hash=generate_password_hash(password),
-            role=chosen_role,
-            is_active=True,
-            is_email_verified=True,
-            created_at=datetime.now(timezone.utc)
-        )
-        db.session.add(new_user)
-        db.session.commit()
-
-        AuditLog.log(
-            event_type='USER_SIGNUP',
-            description=f'{chosen_role.capitalize()} registered account: @{username} ({email})',
-            actor_id=new_user.id,
-            ip_address=request.remote_addr
-        )
-
-        # Send Welcome & Registration Confirmation Email containing account details
-        try:
-            portal_login_url = request.host_url.rstrip('/') + url_for('login_staff' if chosen_role == 'staff' else 'login_student')
-            send_welcome_email(
-                recipient_email=new_user.email,
-                recipient_name=new_user.full_name or new_user.username,
-                username=new_user.username,
-                role=new_user.role,
-                student_identifier=new_user.student_identifier,
-                login_url=portal_login_url
-            )
-        except Exception as e:
-            app.logger.warning(f"Could not send welcome email: {e}")
-
-        # Optional OTP verification if explicitly enabled
-        if Config.REQUIRE_EMAIL_VERIFICATION:
-            new_user.is_email_verified = False
-            otp_code = new_user.generate_otp(Config.OTP_EXPIRE_MINUTES)
-            db.session.commit()
-            send_otp_email(new_user.email, new_user.full_name, otp_code)
-            session['pending_verification_user_id'] = new_user.id
-            session['pending_verification_email'] = new_user.email
-            if is_smtp_configured():
-                flash(f'Account created! A 6-digit verification code has been sent to {new_user.email}.', 'info')
-            else:
-                flash(f'Account created! (Dev Mode: Live email is unconfigured. Use the verification code shown below).', 'info')
-            return redirect(url_for('verify_otp'))
-
-        session.permanent = True
-        session['user_id'] = new_user.id
-        session['username'] = new_user.username
-        session['role'] = new_user.role
-
-        role_display = "Faculty/Staff" if new_user.role == 'staff' else "Student"
-        flash(f'Welcome aboard, {new_user.full_name}! Your {role_display} account was created successfully. A registration summary has been sent to {new_user.email}.', 'success')
-        next_url = request.args.get('next')
-        if next_url and next_url.startswith('/'):
-            return redirect(next_url)
-        return redirect(url_for('staff_dashboard' if new_user.role == 'staff' else 'student_dashboard'))
-
-    return render_template('signup.html', active_role=initial_role)
-
-@app.route('/verify-otp', methods=['GET', 'POST'])
-def verify_otp():
-    if get_current_user():
-        return redirect(url_for('index'))
-
-    user_id = session.get('pending_verification_user_id')
-    if not user_id:
-        flash('No pending verification found. Please sign in or register.', 'warning')
-        return redirect(url_for('login'))
-
-    user = db.session.get(User, user_id)
-    if not user:
-        session.pop('pending_verification_user_id', None)
-        session.pop('pending_verification_email', None)
-        flash('User account not found. Please register again.', 'danger')
-        return redirect(url_for('signup'))
-
-    is_smtp = is_smtp_configured()
-    dev_otp = user.otp_code if not is_smtp else None
-
-    if request.method == 'POST':
-        otp_code = (request.form.get('otp') or '').strip()
-        if not otp_code or len(otp_code) != 6:
-            flash('Please enter a valid 6-digit verification code.', 'warning')
-            return render_template('verify_otp.html', user=user, config_smtp_configured=is_smtp, dev_otp_code=dev_otp)
-
-        success, message = user.verify_otp(otp_code)
-        db.session.commit()
-
-        if not success:
-            flash(message, 'danger')
-            dev_otp = user.otp_code if not is_smtp else None
-            return render_template('verify_otp.html', user=user, config_smtp_configured=is_smtp, dev_otp_code=dev_otp)
-
-        # Verification succeeded! Complete session login
-        session.pop('pending_verification_user_id', None)
-        session.pop('pending_verification_email', None)
-        session.permanent = True
-        session['user_id'] = user.id
-        session['username'] = user.username
-        session['role'] = user.role
-        user.last_login_at = datetime.now(timezone.utc)
-        db.session.commit()
-
-        AuditLog.log(
-            event_type='EMAIL_VERIFIED',
-            description=f'User @{user.username} ({user.role}) successfully verified their email address ({user.email}).',
-            actor_id=user.id,
-            ip_address=request.remote_addr
-        )
-
-        role_target = 'student_dashboard'
-        if user.role == 'staff':
-            role_target = 'staff_dashboard'
-        elif user.role == 'admin':
-            role_target = 'admin_dashboard'
-
-        flash(f'Email verified successfully! Welcome to your dashboard, {user.full_name or user.username}.', 'success')
-        return redirect(url_for(role_target))
-
-    return render_template('verify_otp.html', user=user, config_smtp_configured=is_smtp, dev_otp_code=dev_otp)
-
-@app.route('/resend-otp', methods=['POST'])
-def resend_otp():
-    user_id = session.get('pending_verification_user_id')
-    if not user_id:
-        flash('No pending verification found. Please sign in or register.', 'warning')
-        return redirect(url_for('login'))
-
-    user = db.session.get(User, user_id)
-    if not user:
-        flash('Account not found.', 'danger')
-        return redirect(url_for('signup'))
-
-    otp_code = user.generate_otp(Config.OTP_EXPIRE_MINUTES)
-    db.session.commit()
-    send_otp_email(user.email, user.full_name or user.username, otp_code)
-    if is_smtp_configured():
-        flash(f'A fresh 6-digit verification code has been sent to {user.email}.', 'info')
-    else:
-        flash(f'A fresh 6-digit verification code has been generated for {user.email}.', 'info')
-    return redirect(url_for('verify_otp'))
+    flash('Public student self-registration is disabled. Student accounts are provisioned directly by course instructors or administrators.', 'info')
+    return redirect(url_for('login_student'))
 
 @app.route('/logout')
 def logout():
@@ -391,85 +239,139 @@ def logout():
             event_type='LOGOUT',
             description=f'User {user.username} logged out.',
             actor_id=user.id,
+            actor_role=user.role,
             ip_address=request.remote_addr
         )
     session.clear()
-    flash('You have been logged out successfully.', 'info')
+    flash('You have been signed out successfully.', 'info')
     return redirect(url_for('login'))
 
 # ---------------------------------------------------------
-# Classroom Join Invitation Routes
+# Password Management Routes (Change, Forgot, Reset)
 # ---------------------------------------------------------
-@app.route('/classroom/join/<token>')
-def join_classroom_landing(token):
-    classroom = Classroom.query.filter_by(invite_token=token, status='active').first()
-    if not classroom:
-        flash('Invalid or expired classroom invitation link.', 'danger')
-        return redirect(url_for('index'))
-
-    user = get_current_user()
-    is_member = False
-    if user:
-        is_member = ClassroomMembership.query.filter_by(
-            classroom_id=classroom.id,
-            student_id=user.id,
-            status='active'
-        ).first() is not None
-
-    return render_template('classroom_join.html', classroom=classroom, is_member=is_member)
-
-@app.route('/classroom/join/<token>/confirm', methods=['POST'])
+@app.route('/student/change-password', methods=['GET', 'POST'], endpoint='change_password')
 @login_required
-@role_required('student')
-def join_classroom_submit(token):
-    classroom = Classroom.query.filter_by(invite_token=token, status='active').first()
-    if not classroom:
-        flash('Classroom join link is invalid or has been revoked.', 'danger')
-        return redirect(url_for('student_dashboard'))
-
+def change_password():
     user = get_current_user()
-    existing_membership = ClassroomMembership.query.filter_by(
-        classroom_id=classroom.id,
-        student_id=user.id
-    ).first()
+    if request.method == 'POST':
+        current_password = (request.form.get('current_password') or '').strip()
+        new_password = (request.form.get('new_password') or '').strip()
+        confirm_password = (request.form.get('confirm_password') or '').strip()
 
-    if existing_membership:
-        if existing_membership.status == 'removed':
-            existing_membership.status = 'active'
-            db.session.commit()
-            flash(f'Re-enrolled into {classroom.name} successfully!', 'success')
-        else:
-            flash(f'You are already enrolled in {classroom.name}.', 'info')
-    else:
-        new_membership = ClassroomMembership(
-            classroom_id=classroom.id,
-            student_id=user.id,
-            status='active',
-            joined_at=datetime.now(timezone.utc)
-        )
-        db.session.add(new_membership)
-        db.session.commit()
+        if not user.check_password(current_password):
+            flash('Incorrect current password.', 'danger')
+            return render_template('student/change_password.html')
+
+        if len(new_password) < 6:
+            flash('New password must be at least 6 characters long.', 'warning')
+            return render_template('student/change_password.html')
+
+        if new_password == Config.DEFAULT_STUDENT_PASSWORD:
+            flash('You cannot keep the default temporary password (Student@123). Please choose a private personal password.', 'warning')
+            return render_template('student/change_password.html')
+
+        if new_password != confirm_password:
+            flash('New password and confirmation do not match.', 'danger')
+            return render_template('student/change_password.html')
+
+        user.set_password(new_password)
 
         AuditLog.log(
-            event_type='CLASSROOM_JOIN',
-            description=f'Student {user.username} joined classroom "{classroom.name}" via invite token.',
+            event_type='PASSWORD_CHANGED',
+            description=f'User {user.email} successfully updated their password.',
             actor_id=user.id,
-            target_type='Classroom',
-            target_id=classroom.id,
+            actor_role=user.role,
             ip_address=request.remote_addr
         )
-        flash(f'Successfully enrolled into {classroom.name}!', 'success')
 
-    # Send enrollment notification email to student and alert to faculty
-    try:
-        base_url = request.host_url.rstrip('/')
-        send_classroom_enrolled_email(student=user, classroom=classroom, staff=classroom.staff, app_url=base_url)
-        if classroom.staff:
-            send_student_joined_staff_notification_email(staff=classroom.staff, student=user, classroom=classroom, app_url=base_url)
-    except Exception as e:
-        app.logger.warning(f"Failed to send classroom enrollment email notifications: {e}")
+        try:
+            send_password_reset_notification_email(user.email, user.full_name or user.username)
+        except Exception as e:
+            app.logger.warning(f"Could not send password update confirmation email: {e}")
 
-    return redirect(url_for('student_classroom_leaderboard', classroom_id=classroom.id))
+        flash('Your password has been updated successfully! Welcome to your dashboard.', 'success')
+        return redirect(url_for('student_dashboard' if user.role == 'student' else 'index'))
+
+    return render_template('student/change_password.html')
+
+@app.route('/student/forgot-password', methods=['GET', 'POST'], endpoint='forgot_password')
+def forgot_password():
+    if get_current_user():
+        return redirect(url_for('index'))
+
+    if request.method == 'POST':
+        email = normalize_email(request.form.get('email'))
+        if email:
+            user = User.find_by_email(email)
+            if user and user.is_active:
+                raw_token = PasswordReset.create_token(user.id, expires_in_minutes=Config.PASSWORD_RESET_EXPIRE_MINUTES)
+                reset_url = f"{Config.APP_BASE_URL.rstrip('/')}/student/reset-password/{raw_token}"
+                
+                AuditLog.log(
+                    event_type='PASSWORD_RESET_REQUESTED',
+                    description=f'Password reset link requested for user {user.email}',
+                    actor_id=user.id,
+                    actor_role=user.role,
+                    ip_address=request.remote_addr
+                )
+                
+                try:
+                    send_password_reset_token_email(user.email, user.full_name or user.username, reset_url)
+                except Exception as e:
+                    app.logger.warning(f"Failed to dispatch password reset email: {e}")
+
+        # Always display safe generic message to avoid user enumeration
+        flash('If an active account is registered with that email address, password reset instructions have been sent.', 'info')
+        return redirect(url_for('login_student'))
+
+    return render_template('student/forgot_password.html')
+
+@app.route('/student/reset-password/<token>', methods=['GET', 'POST'], endpoint='reset_password')
+def reset_password(token):
+    if get_current_user():
+        return redirect(url_for('index'))
+
+    user, error_msg = PasswordReset.verify_token(token)
+    if error_msg or not user:
+        flash(error_msg or 'Invalid or expired password reset link.', 'danger')
+        return redirect(url_for('forgot_password'))
+
+    if request.method == 'POST':
+        new_password = (request.form.get('new_password') or '').strip()
+        confirm_password = (request.form.get('confirm_password') or '').strip()
+
+        if len(new_password) < 6:
+            flash('Password must be at least 6 characters long.', 'warning')
+            return render_template('student/reset_password.html', token=token, user=user)
+
+        if new_password == Config.DEFAULT_STUDENT_PASSWORD:
+            flash('You cannot use the default temporary password (Student@123). Please choose a private personal password.', 'warning')
+            return render_template('student/reset_password.html', token=token, user=user)
+
+        if new_password != confirm_password:
+            flash('Passwords do not match.', 'danger')
+            return render_template('student/reset_password.html', token=token, user=user)
+
+        user.set_password(new_password)
+        PasswordReset.mark_used(token)
+
+        AuditLog.log(
+            event_type='PASSWORD_RESET_COMPLETED',
+            description=f'User {user.email} completed password reset using token.',
+            actor_id=user.id,
+            actor_role=user.role,
+            ip_address=request.remote_addr
+        )
+
+        try:
+            send_password_reset_notification_email(user.email, user.full_name or user.username)
+        except Exception as e:
+            app.logger.warning(f"Could not send password reset confirmation email: {e}")
+
+        flash('Your password has been reset successfully! Please sign in with your new password.', 'success')
+        return redirect(url_for('login_student'))
+
+    return render_template('student/reset_password.html', token=token, user=user)
 
 # ---------------------------------------------------------
 # Student Portal Routes
@@ -479,10 +381,9 @@ def join_classroom_submit(token):
 @role_required('student')
 def student_dashboard():
     student = get_current_user()
-    profiles = PlatformProfile.query.filter_by(user_id=student.id).all()
-    classrooms = ClassroomMembership.query.filter_by(student_id=student.id, status='active').all()
+    profiles = PlatformProfile.find_by_user_id(student.id)
+    classrooms = student.get_classrooms()
 
-    # Calculate summary metrics
     top_rating = max([p.rating for p in profiles], default=0)
     total_solved = sum([p.recent_problems for p in profiles])
     total_contests = sum([p.total_contests for p in profiles])
@@ -494,13 +395,13 @@ def student_dashboard():
         "total_profiles": len(profiles)
     }
 
-    # Fetch daily snapshots for progress charts (last 30 days)
-    snapshots = PerformanceSnapshot.query.filter_by(user_id=student.id).order_by(PerformanceSnapshot.snapshot_date.asc()).all()
+    snapshots = PerformanceSnapshot.find_by_user_id(student.id, limit=30)
+    # Sort chronological for charts
+    snapshots.sort(key=lambda s: str(s.snapshot_date))
 
-    # Aggregate snapshots by date for clean chart lines
     date_map = {}
     for s in snapshots:
-        d_str = s.snapshot_date.strftime('%b %d')
+        d_str = str(s.snapshot_date)[:10]
         if d_str not in date_map:
             date_map[d_str] = {"rating": 0, "solved": 0}
         date_map[d_str]["rating"] = max(date_map[d_str]["rating"], s.rating)
@@ -538,37 +439,32 @@ def student_add_profile():
         flash(f'Invalid {platform} profile URL or handle format.', 'danger')
         return redirect(url_for('student_dashboard'))
 
-    existing = PlatformProfile.query.filter_by(user_id=student.id, platform=platform).first()
+    existing = PlatformProfile.find_one(student.id, platform)
     if existing:
         flash(f'You already have a {platform} handle ({existing.handle}) connected. Disconnect it first to add a new handle.', 'warning')
         return redirect(url_for('student_dashboard'))
 
-    new_profile = PlatformProfile(
-        user_id=student.id,
-        platform=platform,
-        handle=handle,
-        profile_url=canonical_url,
-        sync_status='pending'
-    )
-    db.session.add(new_profile)
-    db.session.commit()
+    new_profile = PlatformProfile.upsert(student.id, platform, {
+        'handle': handle,
+        'profile_url': canonical_url,
+        'sync_status': 'pending'
+    })
 
-    # Synchronize platform data immediately
     res = sync_single_platform_profile(new_profile, force=True)
     if res.get("success"):
-        flash(f'Successfully connected and synced {platform} handle "{handle}"!', 'success')
+        flash(f'Successfully connected and synchronized {platform} handle "{handle}"!', 'success')
     else:
         flash(f'Connected {platform} handle "{handle}", but initial sync failed: {res.get("error")}', 'warning')
 
     return redirect(url_for('student_dashboard'))
 
-@app.route('/student/profile/sync/<int:profile_id>')
+@app.route('/student/profile/sync/<profile_id>')
 @login_required
 @role_required('student')
 def student_sync_profile(profile_id):
     student = get_current_user()
-    profile = db.session.get(PlatformProfile, profile_id)
-    if not profile or profile.user_id != student.id:
+    profile = PlatformProfile.find_by_id(profile_id)
+    if not profile or str(profile.user_id) != str(student.id):
         abort(404)
 
     res = sync_single_platform_profile(profile, force=True)
@@ -578,19 +474,18 @@ def student_sync_profile(profile_id):
         flash(f'Failed to refresh {profile.platform}: {res.get("error")}', 'warning')
     return redirect(url_for('student_dashboard'))
 
-@app.route('/student/profile/delete/<int:profile_id>')
+@app.route('/student/profile/delete/<profile_id>')
 @login_required
 @role_required('student')
 def student_delete_profile(profile_id):
     student = get_current_user()
-    profile = db.session.get(PlatformProfile, profile_id)
-    if not profile or profile.user_id != student.id:
+    profile = PlatformProfile.find_by_id(profile_id)
+    if not profile or str(profile.user_id) != str(student.id):
         abort(404)
 
     plat = profile.platform
     h = profile.handle
-    db.session.delete(profile)
-    db.session.commit()
+    PlatformProfile.delete_by_id(profile_id)
     flash(f'Disconnected {plat} handle "{h}".', 'info')
     return redirect(url_for('student_dashboard'))
 
@@ -603,20 +498,20 @@ def student_sync_profiles():
     flash(f'Synchronized {res.get("synced", 0)} of {res.get("total", 0)} platform profiles.', 'success')
     return redirect(url_for('student_dashboard'))
 
-@app.route('/student/classroom/<int:classroom_id>')
+@app.route('/student/classroom/<classroom_id>')
 @login_required
 def student_classroom_leaderboard(classroom_id):
     user = get_current_user()
     classroom = verify_classroom_access(classroom_id, user)
 
-    memberships = ClassroomMembership.query.filter_by(classroom_id=classroom.id, status='active').all()
+    memberships = ClassroomMembership.find_by_classroom_id(classroom.id, status='active')
     student_scores = []
 
     for m in memberships:
         s = m.student
-        if not s.is_active:
+        if not s or not s.is_active:
             continue
-        profiles = PlatformProfile.query.filter_by(user_id=s.id).all()
+        profiles = PlatformProfile.find_by_user_id(s.id)
         peak_rating = max([p.rating for p in profiles], default=0)
         total_solved = sum([p.recent_problems for p in profiles])
         total_contests = sum([p.total_contests for p in profiles])
@@ -644,39 +539,36 @@ def student_classroom_leaderboard(classroom_id):
 def staff_dashboard():
     staff = get_current_user()
     if staff.role == 'admin':
-        classrooms = Classroom.query.order_by(Classroom.created_at.desc()).all()
+        classrooms = Classroom.find_all()
     else:
-        classrooms = Classroom.query.filter_by(staff_id=staff.id, status='active').order_by(Classroom.created_at.desc()).all()
+        classrooms = Classroom.find_by_staff_id(staff.id, status='active')
 
     class_ids = [c.id for c in classrooms]
-    memberships = ClassroomMembership.query.filter(
-        ClassroomMembership.classroom_id.in_(class_ids),
-        ClassroomMembership.status == 'active'
-    ).all() if class_ids else []
+    all_memberships = []
+    for cid in class_ids:
+        all_memberships.extend(ClassroomMembership.find_by_classroom_id(cid, status='active'))
 
-    unique_student_ids = list(set(m.student_id for m in memberships))
-    students_list = User.query.filter(User.id.in_(unique_student_ids)).order_by(User.created_at.desc()).all() if unique_student_ids else []
-    profiles_list = PlatformProfile.query.filter(PlatformProfile.user_id.in_(unique_student_ids)).all() if unique_student_ids else []
+    unique_student_ids = list(set(m.student_id for m in all_memberships))
+    students_list = [User.find_by_id(sid) for sid in unique_student_ids if User.find_by_id(sid)]
+
+    profiles_list = []
+    for sid in unique_student_ids:
+        profiles_list.extend(PlatformProfile.find_by_user_id(sid))
 
     if staff.role == 'admin':
-        staff_removal_requests = RemovalRequest.query.order_by(
-            (RemovalRequest.status == 'pending').desc(),
-            RemovalRequest.created_at.desc()
-        ).all()
+        staff_removal_requests = RemovalRequest.find_all()
     else:
-        staff_removal_requests = RemovalRequest.query.filter(
-            (RemovalRequest.staff_id == staff.id) | (RemovalRequest.classroom_id.in_(class_ids))
-        ).order_by(
-            (RemovalRequest.status == 'pending').desc(),
-            RemovalRequest.created_at.desc()
-        ).all() if class_ids else []
+        staff_removal_requests = []
+        for cid in class_ids:
+            staff_removal_requests.extend(RemovalRequest.find_by_classroom_id(cid))
 
     pending_removals = [r for r in staff_removal_requests if r.status == 'pending']
 
-    # Map student enrolled classrooms
     student_classrooms_map = {}
-    for m in memberships:
-        student_classrooms_map.setdefault(m.student_id, []).append(m.classroom.name)
+    for m in all_memberships:
+        c = Classroom.find_by_id(m.classroom_id)
+        if c:
+            student_classrooms_map.setdefault(m.student_id, []).append(c.name)
 
     return render_template(
         'staff/dashboard.html',
@@ -704,41 +596,39 @@ def staff_classroom_create():
         flash('Classroom name is required.', 'danger')
         return redirect(url_for('staff_dashboard'))
 
-    new_classroom = Classroom(
+    new_classroom = Classroom.create(
         name=name,
-        description=description or None,
         staff_id=staff.id,
-        status='active',
-        created_at=datetime.now(timezone.utc)
+        description=description
     )
-    new_classroom.generate_invite_token()
-    db.session.add(new_classroom)
-    db.session.commit()
 
     AuditLog.log(
-        event_type='CLASSROOM_CREATE',
+        event_type='CLASSROOM_CREATED',
         description=f'Staff {staff.username} created classroom "{name}"',
         actor_id=staff.id,
+        actor_role=staff.role,
         target_type='Classroom',
         target_id=new_classroom.id,
         ip_address=request.remote_addr
     )
-    flash(f'Classroom "{name}" created successfully with an active join link!', 'success')
+    flash(f'Classroom "{name}" created successfully!', 'success')
     return redirect(url_for('staff_classroom_detail', classroom_id=new_classroom.id))
 
-@app.route('/staff/classroom/<int:classroom_id>')
+@app.route('/staff/classroom/<classroom_id>')
 @login_required
 @role_required('staff', 'admin')
 def staff_classroom_detail(classroom_id):
     staff = get_current_user()
     classroom = verify_classroom_ownership(classroom_id, staff)
 
-    memberships = ClassroomMembership.query.filter_by(classroom_id=classroom.id, status='active').all()
+    memberships = ClassroomMembership.find_by_classroom_id(classroom.id, status='active')
     students_data = []
 
     for m in memberships:
         s = m.student
-        profiles = PlatformProfile.query.filter_by(user_id=s.id).all()
+        if not s:
+            continue
+        profiles = PlatformProfile.find_by_user_id(s.id)
         peak_rating = max([p.rating for p in profiles], default=0)
         total_solved = sum([p.recent_problems for p in profiles])
         students_data.append({
@@ -750,212 +640,329 @@ def staff_classroom_detail(classroom_id):
 
     return render_template('staff/classroom.html', classroom=classroom, students_data=students_data)
 
-@app.route('/staff/classroom/<int:classroom_id>/generate-link')
-@login_required
-@role_required('staff', 'admin')
-def staff_classroom_generate_link(classroom_id):
-    staff = get_current_user()
-    classroom = verify_classroom_ownership(classroom_id, staff)
-    classroom.generate_invite_token()
-    db.session.commit()
-
-    AuditLog.log(
-        event_type='JOIN_TOKEN_GENERATE',
-        description=f'Generated new invitation token for classroom "{classroom.name}"',
-        actor_id=staff.id,
-        target_type='Classroom',
-        target_id=classroom.id,
-        ip_address=request.remote_addr
-    )
-    flash('Generated new classroom join link!', 'success')
-    return redirect(url_for('staff_classroom_detail', classroom_id=classroom.id))
-
-@app.route('/staff/classroom/<int:classroom_id>/revoke-link')
-@login_required
-@role_required('staff', 'admin')
-def staff_classroom_revoke_link(classroom_id):
-    staff = get_current_user()
-    classroom = verify_classroom_ownership(classroom_id, staff)
-    classroom.revoke_invite_token()
-    db.session.commit()
-
-    AuditLog.log(
-        event_type='JOIN_TOKEN_REVOKE',
-        description=f'Revoked join token for classroom "{classroom.name}"',
-        actor_id=staff.id,
-        target_type='Classroom',
-        target_id=classroom.id,
-        ip_address=request.remote_addr
-    )
-    flash('Classroom join link has been revoked.', 'info')
-    return redirect(url_for('staff_classroom_detail', classroom_id=classroom.id))
-
-@app.route('/staff/classroom/<int:classroom_id>/add-student', methods=['POST'])
-@login_required
-@role_required('staff', 'admin')
-def staff_classroom_add_student(classroom_id):
-    staff = get_current_user()
-    classroom = verify_classroom_ownership(classroom_id, staff)
-    ident = (request.form.get('student_identifier') or '').strip().lower()
-
-    if not ident:
-        flash('Student email or username is required.', 'danger')
-        return redirect(url_for('staff_classroom_detail', classroom_id=classroom.id))
-
-    student = User.query.filter(
-        (User.email.ilike(ident)) | (User.username.ilike(ident))
-    ).first()
-
-    if not student or student.role != 'student':
-        flash(f'No registered student found with email/username "{ident}".', 'danger')
-        return redirect(url_for('staff_classroom_detail', classroom_id=classroom.id))
-
-    existing = ClassroomMembership.query.filter_by(
-        classroom_id=classroom.id,
-        student_id=student.id
-    ).first()
-
-    if existing:
-        if existing.status == 'removed':
-            existing.status = 'active'
-            db.session.commit()
-            flash(f'Re-enrolled {student.full_name or student.username} into {classroom.name}.', 'success')
-        else:
-            flash(f'{student.full_name or student.username} is already enrolled in this class.', 'info')
-    else:
-        membership = ClassroomMembership(
-            classroom_id=classroom.id,
-            student_id=student.id,
-            status='active',
-            joined_at=datetime.now(timezone.utc)
-        )
-        db.session.add(membership)
-        db.session.commit()
-
-        AuditLog.log(
-            event_type='STUDENT_ADDED_BY_STAFF',
-            description=f'Staff {staff.username} added student {student.username} to classroom "{classroom.name}"',
-            actor_id=staff.id,
-            target_type='Classroom',
-            target_id=classroom.id,
-            ip_address=request.remote_addr
-        )
-        flash(f'Enrolled {student.full_name or student.username} into {classroom.name}.', 'success')
-
-    try:
-        base_url = request.host_url.rstrip('/')
-        send_classroom_enrolled_email(student=student, classroom=classroom, staff=staff, app_url=base_url)
-    except Exception as e:
-        app.logger.warning(f"Failed to send classroom enrollment email: {e}")
-
-    return redirect(url_for('staff_classroom_detail', classroom_id=classroom.id))
-
-@app.route('/staff/user/create', methods=['POST'])
+@app.route('/staff/user/create', methods=['POST'], endpoint='staff_create_student_user')
 @login_required
 @role_required('staff', 'admin')
 def staff_create_student_user():
     staff = get_current_user()
     full_name = (request.form.get('full_name') or '').strip()
     username = (request.form.get('username') or '').strip()
+    email_raw = (request.form.get('email') or '').strip()
+    norm_email = normalize_email(email_raw)
+    password = (request.form.get('password') or '').strip() or Config.DEFAULT_STUDENT_PASSWORD
     student_id = (request.form.get('student_identifier') or '').strip()
-    email = (request.form.get('email') or '').strip().lower()
-    password = (request.form.get('password') or '').strip()
     classroom_id = request.form.get('classroom_id')
 
-    if not username or not email or not password:
-        flash('Username, email, and password are required to create a student account.', 'danger')
+    if not norm_email:
+        flash('Email address is required.', 'danger')
         return redirect(request.referrer or url_for('staff_dashboard'))
 
-    if len(password) < 6:
-        flash('Password must be at least 6 characters long.', 'warning')
+    existing = User.find_by_email(norm_email)
+    if existing:
+        if existing.role != 'student':
+            flash(f'This email belongs to another account type ({existing.role}).', 'danger')
+            return redirect(request.referrer or url_for('staff_dashboard'))
+        if classroom_id:
+            ClassroomMembership.create_or_activate(classroom_id, existing.id)
+            flash(f'Enrolled existing student {existing.full_name or existing.username} into the selected classroom.', 'success')
+        else:
+            flash(f'Student account {existing.email} already exists.', 'info')
         return redirect(request.referrer or url_for('staff_dashboard'))
 
-    if User.query.filter(User.email.ilike(email)).first():
-        flash('An account with this email already exists.', 'warning')
-        return redirect(request.referrer or url_for('staff_dashboard'))
+    uname_base = username or norm_email.split('@')[0]
+    candidate = uname_base
+    collision = 1
+    while User.find_by_username(candidate):
+        collision += 1
+        candidate = f"{uname_base}_{collision}"
 
-    if User.query.filter(User.username.ilike(username)).first():
-        flash('Username is already taken. Please choose another username.', 'warning')
-        return redirect(request.referrer or url_for('staff_dashboard'))
+    new_user = User.create({
+        'email': email_raw,
+        'username': candidate,
+        'full_name': full_name or candidate,
+        'student_identifier': student_id or None,
+        'password_hash': generate_password_hash(password),
+        'role': 'student',
+        'is_active': True,
+        'is_email_verified': True,
+        'must_change_password': True if password == Config.DEFAULT_STUDENT_PASSWORD else False,
+        'account_source': 'staff_created'
+    })
 
-    new_student = User(
-        username=username,
-        full_name=full_name or username,
-        student_identifier=student_id or None,
-        email=email,
-        password_hash=generate_password_hash(password),
-        role='student',
-        is_active=True,
-        is_email_verified=True,  # Verified directly by authorized staff
-        created_at=datetime.now(timezone.utc)
+    if classroom_id:
+        ClassroomMembership.create_or_activate(classroom_id, new_user.id)
+
+    AuditLog.log(
+        event_type='STUDENT_CREATED',
+        description=f'Staff {staff.username} provisioned student account @{new_user.username} ({new_user.email})',
+        actor_id=staff.id,
+        actor_role=staff.role,
+        target_type='User',
+        target_id=new_user.id,
+        ip_address=request.remote_addr
     )
-    db.session.add(new_student)
-    db.session.commit()
 
     try:
-        portal_login_url = request.host_url.rstrip('/') + url_for('login_student')
+        portal_login_url = f"{Config.APP_BASE_URL.rstrip('/')}/login/student"
         send_welcome_email(
-            recipient_email=new_student.email,
-            recipient_name=new_student.full_name or new_student.username,
-            username=new_student.username,
-            role=new_student.role,
-            student_identifier=new_student.student_identifier,
-            login_url=portal_login_url
+            recipient_email=new_user.email,
+            recipient_name=new_user.full_name,
+            username=new_user.username,
+            role='student',
+            student_identifier=new_user.student_identifier,
+            login_url=portal_login_url,
+            is_newly_provisioned=True,
+            default_password=password
         )
     except Exception as e:
         app.logger.warning(f"Could not send welcome email: {e}")
 
-    # Optional classroom auto-enrollment
-    assigned_classroom = None
-    if classroom_id and str(classroom_id).isdigit():
-        classroom = db.session.get(Classroom, int(classroom_id))
-        if classroom and (staff.role == 'admin' or classroom.staff_id == staff.id):
-            membership = ClassroomMembership(
-                classroom_id=classroom.id,
-                student_id=new_student.id,
-                status='active',
-                joined_at=datetime.now(timezone.utc)
+    flash(f'Student account for {new_user.full_name} created successfully!', 'success')
+    return redirect(request.referrer or url_for('staff_dashboard'))
+
+# ---------------------------------------------------------
+# Single Student Provisioning & Enrollment Endpoint
+# ---------------------------------------------------------
+@app.route('/staff/classroom/<classroom_id>/student/add', methods=['POST'], endpoint='staff_classroom_add_student')
+@app.route('/staff/classroom/<classroom_id>/add-student', methods=['POST'], endpoint='staff_classroom_add_student_legacy')
+@login_required
+@role_required('staff', 'admin')
+def staff_classroom_add_student(classroom_id):
+    staff = get_current_user()
+    classroom = verify_classroom_ownership(classroom_id, staff)
+
+    raw_email = (request.form.get('student_email') or request.form.get('student_identifier') or '').strip()
+    norm_email = normalize_email(raw_email)
+    full_name = (request.form.get('full_name') or '').strip()
+    student_identifier = (request.form.get('student_identifier') if request.form.get('full_name') else None)
+
+    if not norm_email or '@' not in norm_email:
+        flash('A valid student email address is required.', 'danger')
+        return redirect(url_for('staff_classroom_detail', classroom_id=classroom.id))
+
+    existing_user = User.find_by_email(norm_email)
+    if existing_user:
+        # Wrong role protection
+        if existing_user.role != 'student':
+            flash(f'This email belongs to another account type ({existing_user.role}). Cannot enroll as a student.', 'danger')
+            return redirect(url_for('staff_classroom_detail', classroom_id=classroom.id))
+
+        # Enroll existing student without touching password
+        mem, created = ClassroomMembership.create_or_activate(classroom.id, existing_user.id)
+        if created or mem.status == 'active':
+            AuditLog.log(
+                event_type='STUDENT_ENROLLED',
+                description=f'Staff {staff.username} enrolled existing student {existing_user.email} into "{classroom.name}"',
+                actor_id=staff.id,
+                actor_role=staff.role,
+                target_type='Classroom',
+                target_id=classroom.id,
+                ip_address=request.remote_addr
             )
-            db.session.add(membership)
-            db.session.commit()
-            assigned_classroom = classroom
+            try:
+                send_classroom_enrolled_email(
+                    student_email=existing_user.email,
+                    student_name=existing_user.full_name or existing_user.username,
+                    classroom_name=classroom.name,
+                    staff_name=staff.full_name or staff.username,
+                    is_new_student=False
+                )
+            except Exception as e:
+                app.logger.warning(f"Could not send enrollment email: {e}")
+
+            flash(f'Enrolled existing student {existing_user.full_name or existing_user.username} into {classroom.name}.', 'success')
+        else:
+            flash(f'{existing_user.full_name or existing_user.username} is already enrolled in {classroom.name}.', 'info')
+    else:
+        # Provision new student account
+        username = norm_email.split('@')[0]
+        # Ensure username uniqueness
+        if User.find_by_username(username):
+            username = f"{username}_{int(datetime.now().timestamp()) % 10000}"
+
+        new_user = User.create({
+            'email': raw_email,
+            'username': username,
+            'full_name': full_name or username,
+            'student_identifier': student_identifier,
+            'password_hash': generate_password_hash(Config.DEFAULT_STUDENT_PASSWORD),
+            'role': 'student',
+            'is_active': True,
+            'is_email_verified': True,
+            'must_change_password': True,
+            'account_source': 'staff_created'
+        })
+
+        ClassroomMembership.create_or_activate(classroom.id, new_user.id)
+
+        AuditLog.log(
+            event_type='STUDENT_CREATED',
+            description=f'Staff {staff.username} provisioned new student {new_user.email} with default password',
+            actor_id=staff.id,
+            actor_role=staff.role,
+            target_type='User',
+            target_id=new_user.id,
+            ip_address=request.remote_addr
+        )
+
+        AuditLog.log(
+            event_type='STUDENT_ENROLLED',
+            description=f'Staff {staff.username} enrolled new student {new_user.email} into "{classroom.name}"',
+            actor_id=staff.id,
+            actor_role=staff.role,
+            target_type='Classroom',
+            target_id=classroom.id,
+            ip_address=request.remote_addr
+        )
+
+        try:
+            portal_login_url = f"{Config.APP_BASE_URL.rstrip('/')}/login/student"
+            send_welcome_email(
+                recipient_email=new_user.email,
+                recipient_name=new_user.full_name,
+                username=new_user.username,
+                role='student',
+                student_identifier=new_user.student_identifier,
+                login_url=portal_login_url,
+                is_newly_provisioned=True,
+                default_password=Config.DEFAULT_STUDENT_PASSWORD
+            )
+        except Exception as e:
+            app.logger.warning(f"Could not send welcome email to new student: {e}")
+
+        flash(f'New student account for {new_user.full_name} ({new_user.email}) created with initial password Student@123 and enrolled into {classroom.name}!', 'success')
+
+    return redirect(url_for('staff_classroom_detail', classroom_id=classroom.id))
+
+# ---------------------------------------------------------
+# Two-Step Bulk Import Endpoints (.xlsx, .csv, .txt)
+# ---------------------------------------------------------
+@app.route('/staff/classroom/<classroom_id>/students/bulk-upload', methods=['POST'], endpoint='staff_classroom_bulk_upload_preview')
+@login_required
+@role_required('staff', 'admin')
+def staff_classroom_bulk_upload_preview(classroom_id):
+    staff = get_current_user()
+    classroom = verify_classroom_ownership(classroom_id, staff)
+
+    if 'file' not in request.files:
+        return jsonify({"success": False, "error": "No file uploaded."}), 400
+
+    file = request.files['file']
+    if not file or not file.filename:
+        return jsonify({"success": False, "error": "No file selected."}), 400
+
+    parsed_data, err = parse_bulk_file(file, staff.id, classroom.id)
+    if err or not parsed_data:
+        return jsonify({"success": False, "error": err or "Failed to parse file."}), 400
 
     AuditLog.log(
-        event_type='STAFF_PROVISIONED_STUDENT',
-        description=f'Staff {staff.username} provisioned student login account: @{username} ({email})' + (f' in "{assigned_classroom.name}"' if assigned_classroom else ''),
+        event_type='BULK_IMPORT_STARTED',
+        description=f'Staff {staff.username} uploaded bulk file "{file.filename}" for preview ({parsed_data["summary"]["total_rows"]} rows)',
         actor_id=staff.id,
-        target_type='User',
-        target_id=new_student.id,
+        actor_role=staff.role,
+        target_type='Classroom',
+        target_id=classroom.id,
         ip_address=request.remote_addr
     )
 
-    enrollment_msg = f' and enrolled in {assigned_classroom.name}' if assigned_classroom else ''
-    flash(f'Student login account for {new_student.full_name} (@{username}) created successfully{enrollment_msg}! The student can now sign in.', 'success')
+    return jsonify({
+        "success": True,
+        "import_id": parsed_data["import_id"],
+        "summary": parsed_data["summary"],
+        "rows": parsed_data["rows"]
+    }), 200
 
-    if assigned_classroom:
-        try:
-            base_url = request.host_url.rstrip('/')
-            send_classroom_enrolled_email(student=new_student, classroom=assigned_classroom, staff=staff, app_url=base_url)
-        except Exception as e:
-            app.logger.warning(f"Failed to send classroom enrollment email: {e}")
-        return redirect(url_for('staff_classroom_detail', classroom_id=assigned_classroom.id))
-    return redirect(request.referrer or url_for('staff_dashboard'))
+@app.route('/staff/classroom/<classroom_id>/students/bulk-upload/confirm', methods=['POST'], endpoint='staff_classroom_bulk_upload_confirm')
+@login_required
+@role_required('staff', 'admin')
+def staff_classroom_bulk_upload_confirm(classroom_id):
+    staff = get_current_user()
+    classroom = verify_classroom_ownership(classroom_id, staff)
 
-@app.route('/staff/classroom/<int:classroom_id>/leaderboard')
+    req_data = request.get_json(silent=True) or request.form
+    import_id = req_data.get('import_id')
+    if not import_id:
+        return jsonify({"success": False, "error": "Missing import_id parameter."}), 400
+
+    staging_doc = BulkImport.find_by_import_id(import_id)
+    if not staging_doc:
+        return jsonify({"success": False, "error": "Staged import record not found or expired."}), 404
+
+    # Validate staff and classroom ownership of staged record
+    if str(staging_doc.staff_id) != str(staff.id) and staff.role != 'admin':
+        return jsonify({"success": False, "error": "Unauthorized access to this import batch."}), 403
+
+    if str(staging_doc.classroom_id) != str(classroom.id):
+        return jsonify({"success": False, "error": "Classroom ID mismatch for this import batch."}), 400
+
+    if staging_doc.status not in ('preview', 'failed'):
+        return jsonify({"success": False, "error": f"Import batch is already {staging_doc.status}."}), 400
+
+    AuditLog.log(
+        event_type='BULK_IMPORT_CONFIRMED',
+        description=f'Staff {staff.username} confirmed bulk enrollment for import {import_id}',
+        actor_id=staff.id,
+        actor_role=staff.role,
+        target_type='Classroom',
+        target_id=classroom.id,
+        ip_address=request.remote_addr
+    )
+
+    summary_result, excel_bytes = execute_bulk_enrollment(staging_doc, staff, classroom)
+
+    AuditLog.log(
+        event_type='BULK_IMPORT_COMPLETED',
+        description=f'Staff {staff.username} completed bulk import: {summary_result["new_accounts_created"]} new, {summary_result["existing_enrolled"]} existing enrolled',
+        actor_id=staff.id,
+        actor_role=staff.role,
+        target_type='Classroom',
+        target_id=classroom.id,
+        ip_address=request.remote_addr
+    )
+
+    return jsonify({
+        "success": True,
+        "import_id": import_id,
+        "summary": summary_result
+    }), 200
+
+@app.route('/staff/classroom/<classroom_id>/students/bulk-upload/<import_id>/report', endpoint='staff_classroom_bulk_report')
+@login_required
+@role_required('staff', 'admin')
+def staff_classroom_bulk_report(classroom_id, import_id):
+    staff = get_current_user()
+    classroom = verify_classroom_ownership(classroom_id, staff)
+
+    staging_doc = BulkImport.find_by_import_id(import_id)
+    if not staging_doc:
+        abort(404)
+
+    if str(staging_doc.classroom_id) != str(classroom.id):
+        abort(403)
+
+    excel_bytes = generate_bulk_result_excel(staging_doc, classroom.name)
+    return send_file(
+        io.BytesIO(excel_bytes),
+        as_attachment=True,
+        download_name=f"Bulk_Import_Result_{classroom.name}_{import_id[:8]}.xlsx",
+        mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+    )
+
+@app.route('/staff/classroom/<classroom_id>/leaderboard')
 @login_required
 @role_required('staff', 'admin')
 def staff_classroom_leaderboard(classroom_id):
     staff = get_current_user()
     classroom = verify_classroom_ownership(classroom_id, staff)
 
-    memberships = ClassroomMembership.query.filter_by(classroom_id=classroom.id, status='active').all()
+    memberships = ClassroomMembership.find_by_classroom_id(classroom.id, status='active')
     student_scores = []
 
     for m in memberships:
         s = m.student
-        if not s.is_active:
+        if not s or not s.is_active:
             continue
-        profiles = PlatformProfile.query.filter_by(user_id=s.id).all()
+        profiles = PlatformProfile.find_by_user_id(s.id)
         peak_rating = max([p.rating for p in profiles], default=0)
         total_solved = sum([p.recent_problems for p in profiles])
         total_contests = sum([p.total_contests for p in profiles])
@@ -974,20 +981,20 @@ def staff_classroom_leaderboard(classroom_id):
     student_scores.sort(key=lambda x: (x['total_score'], x['peak_rating'], x['total_solved']), reverse=True)
     return render_template('staff/leaderboard.html', classroom=classroom, student_scores=student_scores)
 
-@app.route('/staff/student/<int:student_id>')
+@app.route('/staff/student/<student_id>')
 @login_required
 @role_required('staff', 'admin')
 def staff_student_detail(student_id):
     staff = get_current_user()
     student = verify_student_access(student_id, staff)
 
-    profiles = PlatformProfile.query.filter_by(user_id=student.id).all()
-    snapshots = PerformanceSnapshot.query.filter_by(user_id=student.id).order_by(PerformanceSnapshot.snapshot_date.desc()).all()
+    profiles = PlatformProfile.find_by_user_id(student.id)
+    snapshots = PerformanceSnapshot.find_by_user_id(student.id, limit=30)
+    snapshots.sort(key=lambda s: str(s.snapshot_date))
 
-    # Chart datasets
     date_map = {}
-    for s in reversed(snapshots):
-        d_str = s.snapshot_date.strftime('%b %d')
+    for s in snapshots:
+        d_str = str(s.snapshot_date)[:10]
         if d_str not in date_map:
             date_map[d_str] = {"rating": 0, "solved": 0}
         date_map[d_str]["rating"] = max(date_map[d_str]["rating"], s.rating)
@@ -1007,13 +1014,13 @@ def staff_student_detail(student_id):
         chart_solved=chart_solved
     )
 
-@app.route('/staff/student/<int:student_id>/request-removal', methods=['POST'])
+@app.route('/staff/student/<student_id>/request-removal', methods=['POST'])
 @login_required
 @role_required('staff')
 def staff_request_removal(student_id):
     staff = get_current_user()
     student = verify_student_access(student_id, staff)
-    classroom_id = int(request.form.get('classroom_id', 0))
+    classroom_id = request.form.get('classroom_id')
     reason = (request.form.get('reason') or '').strip()
 
     classroom = verify_classroom_ownership(classroom_id, staff)
@@ -1021,45 +1028,40 @@ def staff_request_removal(student_id):
         flash('Reason for removal is required.', 'danger')
         return redirect(url_for('staff_classroom_detail', classroom_id=classroom.id))
 
-    req = RemovalRequest(
+    req = RemovalRequest.create(
         staff_id=staff.id,
         student_id=student.id,
         classroom_id=classroom.id,
-        reason=reason,
-        status='pending',
-        created_at=datetime.now(timezone.utc)
+        reason=reason
     )
-    db.session.add(req)
-    db.session.commit()
 
     AuditLog.log(
         event_type='REMOVAL_REQUEST_SUBMITTED',
-        description=f'Staff {staff.username} submitted removal request for student {student.username} from class "{classroom.name}"',
+        description=f'Staff {staff.username} submitted removal request for student {student.username} from "{classroom.name}"',
         actor_id=staff.id,
+        actor_role=staff.role,
         target_type='RemovalRequest',
         target_id=req.id,
         ip_address=request.remote_addr
     )
 
     try:
-        base_url = request.host_url.rstrip('/')
-        admin_user = User.query.filter_by(role='admin').first()
-        admin_email = admin_user.email if admin_user else Config.INITIAL_ADMIN_EMAIL
+        admin_user = User.find_all({'role': 'admin'})
+        admin_email = admin_user[0].email if admin_user else Config.INITIAL_ADMIN_EMAIL
         send_removal_request_submitted_email(
             admin_email=admin_email,
-            staff=staff,
-            student=student,
-            classroom=classroom,
-            reason=reason,
-            app_url=base_url
+            staff_name=staff.full_name or staff.username,
+            student_name=student.full_name or student.username,
+            classroom_name=classroom.name,
+            reason=reason
         )
     except Exception as e:
-        app.logger.warning(f"Failed to send removal request admin notification: {e}")
+        app.logger.warning(f"Could not send removal request notification to admin: {e}")
 
     flash(f'Removal request for {student.full_name or student.username} submitted to Administrator.', 'info')
     return redirect(url_for('staff_classroom_detail', classroom_id=classroom.id))
 
-@app.route('/staff/sync/classroom/<int:classroom_id>')
+@app.route('/staff/sync/classroom/<classroom_id>')
 @login_required
 @role_required('staff', 'admin')
 def staff_sync_classroom(classroom_id):
@@ -1069,7 +1071,7 @@ def staff_sync_classroom(classroom_id):
     flash(f'Class sync completed: {res.get("synced_profiles", 0)} of {res.get("total_profiles", 0)} profiles updated.', 'success')
     return redirect(url_for('staff_classroom_detail', classroom_id=classroom.id))
 
-@app.route('/staff/sync/student/<int:student_id>')
+@app.route('/staff/sync/student/<student_id>')
 @login_required
 @role_required('staff', 'admin')
 def staff_sync_student(student_id):
@@ -1086,17 +1088,13 @@ def staff_sync_student(student_id):
 @login_required
 @role_required('admin')
 def admin_dashboard():
-    students_list = User.query.filter_by(role='student').order_by(User.created_at.desc()).all()
-    staff_list = User.query.filter_by(role='staff').order_by(User.created_at.desc()).all()
-    classrooms_list = Classroom.query.order_by(Classroom.created_at.desc()).all()
-    pending_removals_list = RemovalRequest.query.filter_by(status='pending').order_by(RemovalRequest.created_at.desc()).all()
-    all_removals_list = RemovalRequest.query.order_by(
-        (RemovalRequest.status == 'pending').desc(),
-        RemovalRequest.created_at.desc()
-    ).limit(25).all()
-    recent_logs = AuditLog.query.order_by(AuditLog.created_at.desc()).limit(8).all()
+    students_list = User.find_all({'role': 'student'})
+    staff_list = User.find_all({'role': 'staff'})
+    classrooms_list = Classroom.find_all()
+    pending_removals_list = RemovalRequest.find_all(status='pending')
+    all_removals_list = RemovalRequest.find_all()[:25]
+    recent_logs = AuditLog.find_all(limit=8)
 
-    # Map staff created classrooms count
     staff_classrooms_count = {}
     for c in classrooms_list:
         staff_classrooms_count[c.staff_id] = staff_classrooms_count.get(c.staff_id, 0) + 1
@@ -1120,7 +1118,7 @@ def admin_dashboard():
 @login_required
 @role_required('admin')
 def admin_users():
-    users = User.query.order_by(User.created_at.desc()).all()
+    users = User.find_all()
     return render_template('admin/users.html', users=users)
 
 @app.route('/admin/users/export')
@@ -1128,13 +1126,14 @@ def admin_users():
 @role_required('admin')
 def admin_export_users():
     admin = get_current_user()
-    users = User.query.order_by(User.id.asc()).all()
+    users = User.find_all()
     file_path, filename = generate_user_directory_excel(users)
 
     AuditLog.log(
         event_type='USER_DIRECTORY_EXPORTED',
-        description=f'Admin {admin.username} exported full user directory to Excel ({len(users)} accounts)',
+        description=f'Admin {admin.username} exported user directory ({len(users)} accounts)',
         actor_id=admin.id,
+        actor_role=admin.role,
         ip_address=request.remote_addr
     )
     return send_file(
@@ -1144,12 +1143,12 @@ def admin_export_users():
         mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
     )
 
-@app.route('/admin/user/<int:user_id>/reset-password', methods=['POST'])
+@app.route('/admin/user/<user_id>/reset-password', methods=['POST'])
 @login_required
 @role_required('admin')
 def admin_reset_user_password(user_id):
     admin = get_current_user()
-    target_user = db.session.get(User, user_id)
+    target_user = User.find_by_id(user_id)
     if not target_user:
         flash('User account not found.', 'danger')
         return redirect(url_for('admin_users'))
@@ -1159,97 +1158,83 @@ def admin_reset_user_password(user_id):
         flash('Password must be at least 6 characters.', 'danger')
         return redirect(url_for('admin_users'))
 
-    target_user.password_hash = generate_password_hash(new_password)
-    db.session.commit()
+    target_user.set_password(new_password)
 
     try:
-        base_url = request.host_url.rstrip('/')
-        send_password_reset_notification_email(target_user, new_password=new_password, app_url=base_url)
+        send_password_reset_notification_email(target_user.email, target_user.full_name or target_user.username)
     except Exception as e:
-        app.logger.warning(f"Failed to send password reset email: {e}")
+        app.logger.warning(f"Failed to send password reset notification email: {e}")
 
     AuditLog.log(
         event_type='ADMIN_PASSWORD_RESET',
-        description=f'Admin {admin.username} reset password for user {target_user.username} (ID: {target_user.id})',
+        description=f'Admin {admin.username} reset password for user {target_user.username}',
         actor_id=admin.id,
+        actor_role=admin.role,
         target_type='User',
         target_id=target_user.id,
         ip_address=request.remote_addr
     )
-    flash(f'Password for @{target_user.username} ({target_user.email}) has been updated successfully.', 'success')
+    flash(f'Password for @{target_user.username} ({target_user.email}) updated successfully.', 'success')
     return redirect(url_for('admin_users'))
 
-@app.route('/admin/user/<int:user_id>/delete', methods=['POST'])
+@app.route('/admin/user/<user_id>/delete', methods=['POST'])
 @login_required
 @role_required('admin')
 def admin_delete_user(user_id):
     admin = get_current_user()
-    target_user = db.session.get(User, user_id)
+    target_user = User.find_by_id(user_id)
     if not target_user:
         flash('User account not found.', 'danger')
         return redirect(url_for('admin_users'))
 
-    if target_user.id == admin.id:
+    if str(target_user.id) == str(admin.id):
         flash('Cannot delete your own active administrator account.', 'warning')
         return redirect(url_for('admin_users'))
 
-    user_username = target_user.username
-    user_email = target_user.email
-    user_role = target_user.role
-
-    # Clean up associated removal requests where target user was student or staff or reviewer
-    RemovalRequest.query.filter(
-        (RemovalRequest.student_id == target_user.id) |
-        (RemovalRequest.staff_id == target_user.id) |
-        (RemovalRequest.reviewed_by_id == target_user.id)
-    ).delete(synchronize_session=False)
-
-    # Detach audit logs created by this user to avoid FK integrity violations
-    AuditLog.query.filter_by(actor_id=target_user.id).update({'actor_id': None}, synchronize_session=False)
-
-    # Delete the user (cascades memberships, profiles, snapshots, created classrooms)
-    db.session.delete(target_user)
-    db.session.commit()
+    u_email = target_user.email
+    u_role = target_user.role
+    User.delete_by_id(user_id)
 
     AuditLog.log(
-        event_type='USER_PERMANENTLY_DELETED',
-        description=f'Admin {admin.username} permanently deleted user account @{user_username} ({user_email}, role: {user_role}) from database',
+        event_type='ACCOUNT_DEACTIVATED',
+        description=f'Admin {admin.username} permanently deleted user {u_email} ({u_role})',
         actor_id=admin.id,
+        actor_role=admin.role,
         target_type='User',
         target_id=user_id,
         ip_address=request.remote_addr
     )
-    flash(f'User account @{user_username} ({user_email}) has been permanently deleted from the database.', 'success')
+    flash(f'User {u_email} has been permanently removed.', 'success')
     return redirect(url_for('admin_users'))
 
-@app.route('/admin/user/<int:user_id>/toggle-status', methods=['POST'])
+@app.route('/admin/user/<user_id>/toggle-status', methods=['POST'])
 @login_required
 @role_required('admin')
 def admin_toggle_user_status(user_id):
     admin = get_current_user()
-    target_user = db.session.get(User, user_id)
+    target_user = User.find_by_id(user_id)
     if not target_user:
         flash('User not found.', 'danger')
         return redirect(url_for('admin_users'))
 
-    if target_user.id == admin.id:
-        flash('You cannot deactivate your own active admin account.', 'danger')
+    if str(target_user.id) == str(admin.id):
+        flash('Cannot deactivate your own active admin account.', 'danger')
         return redirect(url_for('admin_users'))
 
-    target_user.is_active = not target_user.is_active
-    db.session.commit()
+    new_status = not target_user.is_active
+    User.update_by_id(user_id, {'is_active': new_status})
 
     try:
-        base_url = request.host_url.rstrip('/')
-        send_account_status_notification_email(target_user, is_active=target_user.is_active, app_url=base_url)
+        send_account_status_notification_email(target_user.email, target_user.full_name or target_user.username, is_active=new_status)
     except Exception as e:
         app.logger.warning(f"Failed to send account status notification: {e}")
 
-    status_str = "activated" if target_user.is_active else "deactivated"
+    status_str = "activated" if new_status else "deactivated"
     AuditLog.log(
-        event_type='USER_STATUS_TOGGLED',
-        description=f'Admin {admin.username} {status_str} user {target_user.username} ({target_user.email})',
+        event_type='ACCOUNT_REACTIVATED' if new_status else 'ACCOUNT_DEACTIVATED',
+        description=f'Admin {admin.username} {status_str} user {target_user.email}',
         actor_id=admin.id,
+        actor_role=admin.role,
         target_type='User',
         target_id=target_user.id,
         ip_address=request.remote_addr
@@ -1265,7 +1250,8 @@ def admin_create_user():
     admin = get_current_user()
     full_name = (request.form.get('full_name') or '').strip()
     username = (request.form.get('username') or '').strip()
-    email = (request.form.get('email') or '').strip().lower()
+    email_raw = (request.form.get('email') or '').strip()
+    norm_email = normalize_email(email_raw)
     password = (request.form.get('password') or '').strip()
     role = (request.form.get('role') or 'staff').strip().lower()
     student_id = (request.form.get('student_identifier') or '').strip()
@@ -1273,7 +1259,7 @@ def admin_create_user():
     if role not in ['staff', 'student', 'admin']:
         role = 'staff'
 
-    if not username or not email or not password:
+    if not username or not norm_email or not password:
         flash('Full name, username, email, and password are required.', 'danger')
         return redirect(url_for('admin_users'))
 
@@ -1281,31 +1267,30 @@ def admin_create_user():
         flash('Password must be at least 6 characters long.', 'warning')
         return redirect(url_for('admin_users'))
 
-    if User.query.filter(User.email.ilike(email)).first():
+    if User.find_by_email(norm_email):
         flash('An account with this email already exists.', 'warning')
         return redirect(url_for('admin_users'))
 
-    if User.query.filter(User.username.ilike(username)).first():
+    if User.find_by_username(username):
         flash('Username is already taken.', 'warning')
         return redirect(url_for('admin_users'))
 
-    new_user = User(
-        username=username,
-        full_name=full_name or username,
-        student_identifier=student_id or None if role == 'student' else None,
-        email=email,
-        password_hash=generate_password_hash(password),
-        role=role,
-        is_active=True,
-        is_email_verified=True,  # Directly verified when provisioned by admin
-        created_at=datetime.now(timezone.utc)
-    )
-    db.session.add(new_user)
-    db.session.commit()
+    new_user = User.create({
+        'email': email_raw,
+        'username': username,
+        'full_name': full_name or username,
+        'student_identifier': student_id or None if role == 'student' else None,
+        'password_hash': generate_password_hash(password),
+        'role': role,
+        'is_active': True,
+        'is_email_verified': True,
+        'must_change_password': False,
+        'account_source': 'admin_created'
+    })
 
     try:
         login_endpoint = 'login_staff' if role == 'staff' else ('login_admin' if role == 'admin' else 'login_student')
-        portal_login_url = request.host_url.rstrip('/') + url_for(login_endpoint)
+        portal_login_url = f"{Config.APP_BASE_URL.rstrip('/')}/login/{role}"
         send_welcome_email(
             recipient_email=new_user.email,
             recipient_name=new_user.full_name or new_user.username,
@@ -1319,102 +1304,92 @@ def admin_create_user():
 
     AuditLog.log(
         event_type='STAFF_PROVISIONED' if role == 'staff' else 'USER_PROVISIONED',
-        description=f'Admin {admin.username} provisioned {role} account: @{username} ({email})',
+        description=f'Admin {admin.username} provisioned {role} account: @{username} ({new_user.email})',
         actor_id=admin.id,
+        actor_role=admin.role,
         target_type='User',
         target_id=new_user.id,
         ip_address=request.remote_addr
     )
-    if role == 'staff':
-        flash(f'Staff account for {new_user.full_name} provisioned successfully.', 'success')
-    else:
-        flash(f'{role.capitalize()} account for {new_user.full_name} (@{username}) provisioned successfully.', 'success')
+    flash(f'{role.capitalize()} account for {new_user.full_name} provisioned successfully.', 'success')
     return redirect(url_for('admin_users'))
 
 @app.route('/admin/removal-requests')
 @login_required
 @role_required('admin')
 def admin_removal_requests():
-    requests = RemovalRequest.query.order_by(
-        (RemovalRequest.status == 'pending').desc(),
-        RemovalRequest.created_at.desc()
-    ).all()
+    requests = RemovalRequest.find_all()
     return render_template('admin/removal_requests.html', requests=requests)
 
-@app.route('/admin/removal-requests/<int:request_id>/action', methods=['POST'])
+@app.route('/admin/removal-requests/<request_id>/action', methods=['POST'])
 @login_required
 @role_required('admin')
 def admin_handle_removal_request(request_id):
     admin = get_current_user()
-    req = db.session.get(RemovalRequest, request_id)
+    req = RemovalRequest.find_by_id(request_id)
     if not req:
         abort(404)
 
     action = request.form.get('action')  # 'approve' or 'reject'
     if action == 'approve':
-        req.status = 'approved'
-        req.reviewed_by_id = admin.id
-        req.reviewed_at = datetime.now(timezone.utc)
+        req.review(admin.id, 'approved')
 
-        # Remove student from classroom membership (soft status change)
-        membership = ClassroomMembership.query.filter_by(
-            classroom_id=req.classroom_id,
-            student_id=req.student_id
-        ).first()
-        if membership:
-            membership.status = 'removed'
+        # Soft update membership to removed
+        mem = ClassroomMembership.find_one(req.classroom_id, req.student_id)
+        if mem:
+            from mongo_db import get_memberships_col
+            get_memberships_col().update_one(
+                {'_id': to_object_id(mem.id)},
+                {'$set': {'status': 'removed', 'removed_at': datetime.now(timezone.utc)}}
+            )
 
-        db.session.commit()
         AuditLog.log(
-            event_type='REMOVAL_REQUEST_APPROVED',
-            description=f'Admin {admin.username} approved removal of student {req.student_member.username} from class "{req.classroom.name}"',
+            event_type='STUDENT_REMOVED',
+            description=f'Admin {admin.username} approved removal of student ID {req.student_id} from class ID {req.classroom_id}',
             actor_id=admin.id,
+            actor_role=admin.role,
             target_type='RemovalRequest',
             target_id=req.id,
             ip_address=request.remote_addr
         )
         flash('Student removal request approved. Classroom membership updated.', 'success')
     elif action == 'reject':
-        req.status = 'rejected'
-        req.reviewed_by_id = admin.id
-        req.reviewed_at = datetime.now(timezone.utc)
-        db.session.commit()
-
+        req.review(admin.id, 'rejected')
         AuditLog.log(
             event_type='REMOVAL_REQUEST_REJECTED',
             description=f'Admin {admin.username} rejected removal request #{req.id}',
             actor_id=admin.id,
+            actor_role=admin.role,
             target_type='RemovalRequest',
             target_id=req.id,
             ip_address=request.remote_addr
         )
         flash('Student removal request rejected.', 'info')
 
-    # Send decision emails to student and faculty
     try:
-        base_url = request.host_url.rstrip('/')
-        if req.student_member and req.student_member.email:
+        student_user = User.find_by_id(req.student_id)
+        staff_user = User.find_by_id(req.staff_id)
+        c_doc = Classroom.find_by_id(req.classroom_id)
+        c_name = c_doc.name if c_doc else "Classroom"
+
+        if student_user and student_user.email:
             send_removal_request_decision_email(
-                recipient_email=req.student_member.email,
-                recipient_name=req.student_member.full_name or req.student_member.username,
-                student=req.student_member,
-                classroom=req.classroom,
+                recipient_email=student_user.email,
+                student_name=student_user.full_name or student_user.username,
+                classroom_name=c_name,
                 action=action,
-                reviewer=admin,
-                app_url=base_url
+                reviewer_name=admin.full_name or admin.username
             )
-        if req.staff_member and req.staff_member.email:
+        if staff_user and staff_user.email:
             send_removal_request_decision_email(
-                recipient_email=req.staff_member.email,
-                recipient_name=req.staff_member.full_name or req.staff_member.username,
-                student=req.student_member,
-                classroom=req.classroom,
+                recipient_email=staff_user.email,
+                student_name=student_user.full_name if student_user else "Student",
+                classroom_name=c_name,
                 action=action,
-                reviewer=admin,
-                app_url=base_url
+                reviewer_name=admin.full_name or admin.username
             )
     except Exception as e:
-        app.logger.warning(f"Failed to send removal decision email notification: {e}")
+        app.logger.warning(f"Could not send removal decision notifications: {e}")
 
     next_url = request.form.get('next') or request.referrer or url_for('admin_removal_requests')
     return redirect(next_url)
@@ -1423,7 +1398,7 @@ def admin_handle_removal_request(request_id):
 @login_required
 @role_required('admin')
 def admin_audit_logs():
-    logs = AuditLog.query.order_by(AuditLog.created_at.desc()).limit(150).all()
+    logs = AuditLog.find_all(limit=150)
     return render_template('admin/audit_logs.html', logs=logs)
 
 @app.route('/admin/sync-all')
@@ -1436,6 +1411,7 @@ def admin_sync_all():
         event_type='PORTAL_SYNC_TRIGGERED',
         description=f'Admin {admin.username} triggered full portal sync. Synced {res.get("total_profiles_synced", 0)} profiles.',
         actor_id=admin.id,
+        actor_role=admin.role,
         ip_address=request.remote_addr
     )
     flash(f'Portal-wide sync completed! {res.get("total_profiles_synced", 0)} profiles synchronized.', 'success')
@@ -1444,18 +1420,20 @@ def admin_sync_all():
 # ---------------------------------------------------------
 # Excel Report Export Routes (Thread-Safe & Isolated)
 # ---------------------------------------------------------
-@app.route('/download/classroom/<int:classroom_id>')
+@app.route('/download/classroom/<classroom_id>')
 @login_required
 def download_classroom_report(classroom_id):
     user = get_current_user()
     classroom = verify_classroom_access(classroom_id, user)
 
-    memberships = ClassroomMembership.query.filter_by(classroom_id=classroom.id, status='active').all()
+    memberships = ClassroomMembership.find_by_classroom_id(classroom.id, status='active')
     students_with_profiles = []
 
     for m in memberships:
         s = m.student
-        profiles = PlatformProfile.query.filter_by(user_id=s.id).all()
+        if not s:
+            continue
+        profiles = PlatformProfile.find_by_user_id(s.id)
         students_with_profiles.append({
             "student": s,
             "profiles": profiles
@@ -1464,14 +1442,15 @@ def download_classroom_report(classroom_id):
     file_path, filename = generate_classroom_excel(classroom, students_with_profiles)
     return send_file(file_path, as_attachment=True, download_name=filename)
 
-@app.route('/download/student/<int:student_id>')
+@app.route('/download/student/<student_id>')
 @login_required
 def download_student_report(student_id):
     user = get_current_user()
     student = verify_student_access(student_id, user)
 
-    profiles = PlatformProfile.query.filter_by(user_id=student.id).all()
-    snapshots = PerformanceSnapshot.query.filter_by(user_id=student.id).order_by(PerformanceSnapshot.snapshot_date.desc()).all()
+    profiles = PlatformProfile.find_by_user_id(student.id)
+    snapshots = PerformanceSnapshot.find_by_user_id(student.id, limit=30)
+    snapshots.sort(key=lambda s: str(s.snapshot_date), reverse=True)
 
     file_path, filename = generate_student_excel(student, profiles, snapshots)
     return send_file(file_path, as_attachment=True, download_name=filename)
@@ -1481,11 +1460,10 @@ def download_student_report(student_id):
 # ---------------------------------------------------------
 def scheduled_daily_sync():
     with app.app_context():
-        print("[*] Running automated daily platform synchronization...")
+        print("[*] Running automated daily platform synchronization with MongoDB Atlas...")
         sync_all_portal_profiles(force=False)
 
 if __name__ == '__main__':
-    # Scheduler runs only in primary worker / local development
     if os.environ.get('WERKZEUG_RUN_MAIN') == 'true' or not app.debug:
         try:
             scheduler.add_job(id='daily_platform_sync', func=scheduled_daily_sync, trigger='interval', days=1)

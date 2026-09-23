@@ -1,7 +1,7 @@
 import pandas as pd
 import os
 import uuid
-from datetime import datetime, timezone, timedelta
+from datetime import datetime, timezone, timedelta, date
 import openpyxl
 from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
 from openpyxl.utils import get_column_letter
@@ -20,6 +20,13 @@ def ensure_export_dir():
                     try: os.remove(fpath)
                     except: pass
     except: pass
+
+def format_date_safe(val, fmt="%Y-%m-%d %H:%M:%S"):
+    if not val:
+        return "Never"
+    if isinstance(val, (datetime, date)):
+        return val.strftime(fmt)
+    return str(val)
 
 def style_excel_sheet(ws, title_text="Score Tracker Export"):
     """
@@ -100,7 +107,7 @@ def generate_classroom_excel(classroom, students_with_profiles):
             })
         else:
             for p in profiles:
-                updated_str = p.last_synced_at.strftime("%Y-%m-%d %H:%M") if p.last_synced_at else "Never"
+                updated_str = format_date_safe(p.last_synced_at, "%Y-%m-%d %H:%M")
                 rows.append({
                     "Student Name": student.full_name or student.username,
                     "Student ID": student.student_identifier or "N/A",
@@ -145,7 +152,7 @@ def generate_student_excel(student, profiles, snapshots):
     """
     ensure_export_dir()
     file_id = str(uuid.uuid4())[:8]
-    sanitized_name = "".join(c for c in student.username if c.isalnum() or c in (' ', '_', '-')).strip()
+    sanitized_name = "".join(c for c in (student.username or student.email) if c.isalnum() or c in (' ', '_', '-')).strip()
     filename = f"{sanitized_name}_performance_{file_id}.xlsx"
     file_path = os.path.join(Config.EXCEL_EXPORT_DIR, filename)
 
@@ -162,7 +169,7 @@ def generate_student_excel(student, profiles, snapshots):
             "Problems Solved": p.recent_problems,
             "Total Contests": p.total_contests,
             "Profile URL": p.profile_url,
-            "Last Synced": p.last_synced_at.strftime("%Y-%m-%d %H:%M:%S") if p.last_synced_at else "Never"
+            "Last Synced": format_date_safe(p.last_synced_at)
         })
     df_profiles = pd.DataFrame(p_rows)
 
@@ -170,7 +177,7 @@ def generate_student_excel(student, profiles, snapshots):
     s_rows = []
     for s in snapshots:
         s_rows.append({
-            "Date": s.snapshot_date.strftime("%Y-%m-%d"),
+            "Date": format_date_safe(s.snapshot_date, "%Y-%m-%d"),
             "Platform": s.platform,
             "Rating": s.rating,
             "Rating Delta": s.rating_delta,
@@ -215,10 +222,12 @@ def generate_user_directory_excel(users):
             "Role": u.role.capitalize(),
             "Account Status": "Active" if u.is_active else "Deactivated",
             "Email Verified": "Yes" if u.is_email_verified else "No",
+            "Must Change Password": "Yes" if u.must_change_password else "No",
             "Student / Roll ID": u.student_identifier or "N/A",
-            "Password Protection": "Encrypted (scrypt)",
-            "Registered On": u.created_at.strftime("%Y-%m-%d %H:%M:%S") if u.created_at else "N/A",
-            "Last Login": u.last_login_at.strftime("%Y-%m-%d %H:%M:%S") if u.last_login_at else "Never"
+            "Account Source": getattr(u, 'account_source', 'admin_created'),
+            "Password Protection": "Encrypted (scrypt/pbkdf2)",
+            "Registered On": format_date_safe(u.created_at),
+            "Last Login": format_date_safe(u.last_login_at)
         })
 
     df = pd.DataFrame(rows)
@@ -230,4 +239,3 @@ def generate_user_directory_excel(users):
         style_excel_sheet(ws)
     wb.save(file_path)
     return file_path, filename
-

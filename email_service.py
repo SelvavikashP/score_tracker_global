@@ -14,8 +14,8 @@ def is_smtp_configured():
 def _send_email_payload(recipient_email, subject, html_content, text_content, log_tag="EMAIL SERVICE"):
     """
     Core email delivery helper.
-    Sends via live SMTP server (Gmail, Outlook, custom) if configured in .env.
-    Otherwise, logs formatted email summary to the terminal in Developer Sandbox mode.
+    Sends via live SMTP server (Gmail, SendGrid, custom) if configured in .env.
+    Otherwise, logs safe delivery summary to the terminal in Developer Sandbox mode.
     """
     if is_smtp_configured():
         try:
@@ -52,20 +52,12 @@ def _send_email_payload(recipient_email, subject, html_content, text_content, lo
             return True, "Email delivered successfully via SMTP."
         except Exception as e:
             logger.error(f"[{log_tag}] Failed to send SMTP email to {recipient_email}: {e}")
-            print(f"\n=======================================================")
-            print(f"[SMTP ERROR] Failed to deliver real email via SMTP: {e}")
-            print(f"Recipient: {recipient_email}")
-            print(f"Subject: {subject}")
-            print(f"=======================================================\n")
-            return True, f"Email prepared (Live SMTP failed: {e})"
+            print(f"[SMTP ERROR] Failed to deliver email to {recipient_email}: {e}")
+            return False, f"Live SMTP delivery failed: {e}"
     else:
-        print(f"\n=======================================================")
-        print(f"[DEV {log_tag.upper()}] Email Notification")
-        print(f"To: {recipient_email}")
-        print(f"Subject: {subject}")
-        print(f"Text Preview:\n{text_content.strip()}")
-        print(f"=======================================================\n")
-        return True, "Email generated (Dev mode sandbox)."
+        # Safe sandbox logging without printing plaintext secrets
+        print(f"[DEV SANDBOX] {log_tag} -> Dispatched simulated email to {recipient_email} (Subject: '{subject}')")
+        return True, "Email simulated (Developer Sandbox mode)."
 
 def _wrap_html_template(badge_text, title_text, main_html, cta_url=None, cta_text="View in Portal", footer_note=None):
     """Wraps body HTML in the ScoreTracker dark-glass branded email template."""
@@ -112,10 +104,10 @@ def _wrap_html_template(badge_text, title_text, main_html, cta_url=None, cta_tex
 # -----------------------------------------------------------------------------
 # 1. Welcome / Registration Email
 # -----------------------------------------------------------------------------
-def send_welcome_email(recipient_email, recipient_name, username, role, student_identifier=None, login_url=None):
+def send_welcome_email(recipient_email, recipient_name, username, role, student_identifier=None, login_url=None, is_newly_provisioned=False, default_password=None):
     """Sends registration confirmation email containing account details and portal guide."""
     role_display = "Student" if role == 'student' else ("Faculty / Staff" if role == 'staff' else "Administrator")
-    login_link = login_url or "http://127.0.0.1:5000/login"
+    login_link = login_url or f"{Config.APP_BASE_URL}/login/{role if role in ('student', 'staff', 'admin') else 'student'}"
 
     student_row_html = f"""
     <tr>
@@ -124,40 +116,27 @@ def send_welcome_email(recipient_email, recipient_name, username, role, student_
     </tr>
     """ if (role == 'student' and student_identifier) else ""
 
-    student_row_text = f"Student ID / Roll: {student_identifier}\n" if (role == 'student' and student_identifier) else ""
-
-    role_tips_html = """
-    <div style="background: rgba(59, 130, 246, 0.08); border-left: 3px solid #3b82f6; padding: 14px 18px; border-radius: 8px; margin: 18px 0;">
-        <h4 style="margin: 0 0 8px 0; color: #60a5fa; font-size: 14px; font-weight: 700;">Student Quick Start Checklist:</h4>
-        <ul style="margin: 0; padding-left: 18px; color: #cbd5e1; font-size: 13px; line-height: 1.6;">
-            <li><strong>Add Coding Handles:</strong> Link LeetCode, Codeforces, HackerRank, GitHub, CodeChef, and GeeksforGeeks profiles.</li>
-            <li><strong>Join Classrooms:</strong> Enter invite codes from your instructors to join class cohorts and leaderboards.</li>
-            <li><strong>Live Tracking:</strong> Real-time ratings and problem counts synchronize automatically.</li>
-        </ul>
+    credentials_notice_html = f"""
+    <div style="background: rgba(245, 158, 11, 0.1); border-left: 3px solid #f59e0b; padding: 14px 18px; border-radius: 8px; margin: 18px 0;">
+        <h4 style="margin: 0 0 6px 0; color: #fbbf24; font-size: 14px; font-weight: 700;">Initial Login Credentials:</h4>
+        <p style="margin: 0 0 4px 0; color: #cbd5e1; font-size: 13px;">
+            <strong>Registered Email:</strong> <code style="color: #60a5fa;">{recipient_email}</code><br>
+            <strong>Temporary Password:</strong> <code style="color: #fbbf24;">{default_password or Config.DEFAULT_STUDENT_PASSWORD}</code>
+        </p>
+        <p style="margin: 6px 0 0 0; color: #f87171; font-size: 12px; font-weight: 600;">
+            <i class="fas fa-exclamation-triangle"></i> Mandatory: You will be required to change your password immediately upon your first sign in.
+        </p>
     </div>
-    """ if role == 'student' else """
-    <div style="background: rgba(16, 185, 129, 0.08); border-left: 3px solid #10b981; padding: 14px 18px; border-radius: 8px; margin: 18px 0;">
-        <h4 style="margin: 0 0 8px 0; color: #34d399; font-size: 14px; font-weight: 700;">Faculty Quick Start Checklist:</h4>
-        <ul style="margin: 0; padding-left: 18px; color: #cbd5e1; font-size: 13px; line-height: 1.6;">
-            <li><strong>Create Classrooms:</strong> Create course cohorts and generate instant student Join Codes.</li>
-            <li><strong>Sync Stats:</strong> Synchronize student contest ratings and problem statistics in batch.</li>
-            <li><strong>Excel Export:</strong> Export complete roster analytics to Excel with a single click.</li>
-        </ul>
-    </div>
-    """
+    """ if (is_newly_provisioned and role == 'student') else ""
 
     body_html = f"""
     <p style="color: #cbd5e1; font-size: 14px; line-height: 1.5; margin-bottom: 16px;">
-        Your account on the <strong>Global Platform Score Tracker</strong> has been registered successfully.
+        Your account on the <strong>Global Platform Score Tracker</strong> has been provisioned successfully.
     </p>
     <table class="info-table">
         <tr>
             <td style="padding: 10px 14px; border-bottom: 1px solid rgba(255,255,255,0.06); color: #94a3b8; font-size: 13px;">Full Name</td>
             <td style="padding: 10px 14px; border-bottom: 1px solid rgba(255,255,255,0.06); color: #ffffff; font-size: 14px; font-weight: 600;">{recipient_name or username}</td>
-        </tr>
-        <tr>
-            <td style="padding: 10px 14px; border-bottom: 1px solid rgba(255,255,255,0.06); color: #94a3b8; font-size: 13px;">Username</td>
-            <td style="padding: 10px 14px; border-bottom: 1px solid rgba(255,255,255,0.06); color: #60a5fa; font-size: 14px; font-weight: 700; font-family: monospace;">@{username}</td>
         </tr>
         <tr>
             <td style="padding: 10px 14px; border-bottom: 1px solid rgba(255,255,255,0.06); color: #94a3b8; font-size: 13px;">Registered Email</td>
@@ -169,204 +148,187 @@ def send_welcome_email(recipient_email, recipient_name, username, role, student_
         </tr>
         {student_row_html}
     </table>
-    {role_tips_html}
+    {credentials_notice_html}
     """
 
-    subject = f"Welcome to ScoreTracker.io — Account Registered (@{username})"
-    html_content = _wrap_html_template("Registration Confirmed", f"Welcome, {recipient_name or username}!", body_html, cta_url=login_link, cta_text="Access Your Dashboard")
+    subject = f"Welcome to ScoreTracker.io — Account Provisioned"
+    html_content = _wrap_html_template("Registration Confirmed", f"Welcome, {recipient_name or username}!", body_html, cta_url=login_link, cta_text="Sign In to Portal")
 
     text_content = f"""
 Welcome to ScoreTracker.io!
 
 Hi {recipient_name or username},
-Your account on the Global Platform Score Tracker has been registered successfully.
+Your account on the Global Platform Score Tracker has been provisioned.
 
---- ACCOUNT SUMMARY ---
-Full Name: {recipient_name or username}
-Username: @{username}
-Email: {recipient_email}
+Registered Email: {recipient_email}
 Role: {role_display}
-{student_row_text}Portal Login: {login_link}
------------------------
+Portal Login: {login_link}
 """
     return _send_email_payload(recipient_email, subject, html_content, text_content, log_tag="REGISTRATION WELCOME")
 
 # -----------------------------------------------------------------------------
 # 2. Classroom Enrollment Email (Student Notification)
 # -----------------------------------------------------------------------------
-def send_classroom_enrolled_email(student, classroom, staff, app_url="http://127.0.0.1:5000"):
+def send_classroom_enrolled_email(student_email, student_name, classroom_name, staff_name="Faculty Instructor", classroom_url=None, is_new_student=False, default_password=None):
     """Sends notification to student confirming enrollment in a classroom cohort."""
-    if not student or not student.email:
+    if not student_email:
         return False, "No student email"
 
-    classroom_url = f"{app_url}/student/classroom/{classroom.id}"
-    staff_name = staff.full_name or staff.username if staff else "Faculty Instructor"
-    staff_email = staff.email if staff else "N/A"
+    target_url = classroom_url or f"{Config.APP_BASE_URL}/student/dashboard"
+
+    credentials_notice = f"""
+    <div style="background: rgba(245, 158, 11, 0.1); border-left: 3px solid #f59e0b; padding: 12px 16px; border-radius: 8px; margin: 16px 0; font-size: 13px; color: #cbd5e1;">
+        <strong>First Time Logging In?</strong> Your temporary password is <code style="color: #fbbf24;">{default_password or Config.DEFAULT_STUDENT_PASSWORD}</code>. You must change your password on first login.
+    </div>
+    """ if is_new_student else """
+    <p style="color: #94a3b8; font-size: 13px; margin-top: 12px;">
+        Sign in with your existing ScoreTracker email and password to view your rankings.
+    </p>
+    """
 
     body_html = f"""
     <p style="color: #cbd5e1; font-size: 14px; line-height: 1.5; margin-bottom: 16px;">
-        You have successfully joined the classroom cohort <strong>{classroom.name}</strong>.
+        You have been enrolled in the classroom cohort <strong>{classroom_name}</strong> by <strong>{staff_name}</strong>.
     </p>
     <table class="info-table">
         <tr>
             <td style="padding: 10px 14px; border-bottom: 1px solid rgba(255,255,255,0.06); color: #94a3b8; font-size: 13px;">Classroom Name</td>
-            <td style="padding: 10px 14px; border-bottom: 1px solid rgba(255,255,255,0.06); color: #60a5fa; font-size: 14px; font-weight: 700;">{classroom.name}</td>
+            <td style="padding: 10px 14px; border-bottom: 1px solid rgba(255,255,255,0.06); color: #60a5fa; font-size: 14px; font-weight: 700;">{classroom_name}</td>
         </tr>
         <tr>
             <td style="padding: 10px 14px; border-bottom: 1px solid rgba(255,255,255,0.06); color: #94a3b8; font-size: 13px;">Instructor</td>
-            <td style="padding: 10px 14px; border-bottom: 1px solid rgba(255,255,255,0.06); color: #ffffff; font-size: 14px; font-weight: 600;">{staff_name} ({staff_email})</td>
-        </tr>
-        <tr>
-            <td style="padding: 10px 14px; border-bottom: 1px solid rgba(255,255,255,0.06); color: #94a3b8; font-size: 13px;">Description</td>
-            <td style="padding: 10px 14px; border-bottom: 1px solid rgba(255,255,255,0.06); color: #ffffff; font-size: 13px;">{classroom.description or 'No specific description provided'}</td>
+            <td style="padding: 10px 14px; border-bottom: 1px solid rgba(255,255,255,0.06); color: #ffffff; font-size: 14px; font-weight: 600;">{staff_name}</td>
         </tr>
     </table>
-    <div style="background: rgba(59, 130, 246, 0.08); border-left: 3px solid #3b82f6; padding: 12px 16px; border-radius: 8px; margin: 16px 0; font-size: 13px; color: #cbd5e1;">
-        <i class="fas fa-info-circle text-primary"></i> Your competitive programming scores (LeetCode, Codeforces, HackerRank, GitHub, CodeChef, GeeksforGeeks) are automatically ranked on this class's leaderboard.
-    </div>
+    {credentials_notice}
     """
 
-    subject = f"Enrolled in Classroom: {classroom.name} — ScoreTracker.io"
-    html_content = _wrap_html_template("Classroom Enrollment", f"Classroom Joined: {classroom.name}", body_html, cta_url=classroom_url, cta_text="View Class Leaderboard")
+    subject = f"Enrolled in Classroom: {classroom_name} — ScoreTracker.io"
+    html_content = _wrap_html_template("Classroom Enrollment", f"Classroom Joined: {classroom_name}", body_html, cta_url=target_url, cta_text="View Classroom Dashboard")
 
     text_content = f"""
 Classroom Enrollment Confirmed!
 
-Hi {student.full_name or student.username},
-You have joined the classroom: {classroom.name}
-Instructor: {staff_name} ({staff_email})
-
-View classroom leaderboard: {classroom_url}
+Hi {student_name},
+You have been enrolled in: {classroom_name} by {staff_name}.
+Login URL: {Config.APP_BASE_URL}/login/student
 """
-    return _send_email_payload(student.email, subject, html_content, text_content, log_tag="CLASSROOM JOIN STUDENT")
+    return _send_email_payload(student_email, subject, html_content, text_content, log_tag="CLASSROOM JOIN STUDENT")
 
 # -----------------------------------------------------------------------------
 # 3. Student Joined Notification (Faculty / Staff Alert)
 # -----------------------------------------------------------------------------
-def send_student_joined_staff_notification_email(staff, student, classroom, app_url="http://127.0.0.1:5000"):
-    """Sends notification to faculty instructor when a new student joins their classroom."""
-    if not staff or not staff.email:
+def send_student_joined_staff_notification_email(staff_email, staff_name, student_name, student_email, classroom_name, student_identifier=None, roster_url=None):
+    """Sends notification to faculty instructor when a new student is enrolled."""
+    if not staff_email:
         return False, "No staff email"
 
-    roster_url = f"{app_url}/staff/classroom/{classroom.id}"
+    target_url = roster_url or f"{Config.APP_BASE_URL}/staff/dashboard"
 
     body_html = f"""
     <p style="color: #cbd5e1; font-size: 14px; line-height: 1.5; margin-bottom: 16px;">
-        A new student has enrolled in your classroom cohort <strong>{classroom.name}</strong>.
+        A student has been enrolled in your classroom cohort <strong>{classroom_name}</strong>.
     </p>
     <table class="info-table">
         <tr>
             <td style="padding: 10px 14px; border-bottom: 1px solid rgba(255,255,255,0.06); color: #94a3b8; font-size: 13px;">Student Name</td>
-            <td style="padding: 10px 14px; border-bottom: 1px solid rgba(255,255,255,0.06); color: #ffffff; font-size: 14px; font-weight: 600;">{student.full_name or student.username}</td>
-        </tr>
-        <tr>
-            <td style="padding: 10px 14px; border-bottom: 1px solid rgba(255,255,255,0.06); color: #94a3b8; font-size: 13px;">Username</td>
-            <td style="padding: 10px 14px; border-bottom: 1px solid rgba(255,255,255,0.06); color: #60a5fa; font-size: 14px; font-weight: 700; font-family: monospace;">@{student.username}</td>
+            <td style="padding: 10px 14px; border-bottom: 1px solid rgba(255,255,255,0.06); color: #ffffff; font-size: 14px; font-weight: 600;">{student_name}</td>
         </tr>
         <tr>
             <td style="padding: 10px 14px; border-bottom: 1px solid rgba(255,255,255,0.06); color: #94a3b8; font-size: 13px;">Student Email</td>
-            <td style="padding: 10px 14px; border-bottom: 1px solid rgba(255,255,255,0.06); color: #ffffff; font-size: 14px;">{student.email}</td>
+            <td style="padding: 10px 14px; border-bottom: 1px solid rgba(255,255,255,0.06); color: #60a5fa; font-size: 14px;">{student_email}</td>
         </tr>
         <tr>
             <td style="padding: 10px 14px; border-bottom: 1px solid rgba(255,255,255,0.06); color: #94a3b8; font-size: 13px;">Student ID / Roll</td>
-            <td style="padding: 10px 14px; border-bottom: 1px solid rgba(255,255,255,0.06); color: #ffffff; font-size: 14px;">{student.student_identifier or 'N/A'}</td>
+            <td style="padding: 10px 14px; border-bottom: 1px solid rgba(255,255,255,0.06); color: #ffffff; font-size: 14px;">{student_identifier or 'N/A'}</td>
         </tr>
         <tr>
             <td style="padding: 10px 14px; border-bottom: 1px solid rgba(255,255,255,0.06); color: #94a3b8; font-size: 13px;">Classroom</td>
-            <td style="padding: 10px 14px; border-bottom: 1px solid rgba(255,255,255,0.06); color: #34d399; font-size: 14px; font-weight: 700;">{classroom.name}</td>
+            <td style="padding: 10px 14px; border-bottom: 1px solid rgba(255,255,255,0.06); color: #34d399; font-size: 14px; font-weight: 700;">{classroom_name}</td>
         </tr>
     </table>
     """
 
-    subject = f"New Student Enrolled in {classroom.name}: {student.full_name or student.username}"
-    html_content = _wrap_html_template("Classroom Roster Update", f"New Student in {classroom.name}", body_html, cta_url=roster_url, cta_text="Manage Classroom Roster")
+    subject = f"New Student Enrolled in {classroom_name}: {student_name}"
+    html_content = _wrap_html_template("Classroom Roster Update", f"New Student in {classroom_name}", body_html, cta_url=target_url, cta_text="Manage Classroom Roster")
 
     text_content = f"""
-New Student Joined Your Classroom!
-
-Student: {student.full_name or student.username} (@{student.username})
-Email: {student.email}
-ID: {student.student_identifier or 'N/A'}
-Classroom: {classroom.name}
-
-Manage roster: {roster_url}
+Student Enrolled:
+Student: {student_name} ({student_email})
+Classroom: {classroom_name}
 """
-    return _send_email_payload(staff.email, subject, html_content, text_content, log_tag="STUDENT JOIN STAFF ALERT")
+    return _send_email_payload(staff_email, subject, html_content, text_content, log_tag="STUDENT JOIN STAFF ALERT")
 
 # -----------------------------------------------------------------------------
 # 4. Student Removal Request Submitted (Admin Notice)
 # -----------------------------------------------------------------------------
-def send_removal_request_submitted_email(admin_email, staff, student, classroom, reason, app_url="http://127.0.0.1:5000"):
+def send_removal_request_submitted_email(admin_email, staff_name, student_name, classroom_name, reason):
     """Sends notification to Administrator when a faculty member submits a student removal request."""
     if not admin_email:
         return False, "No admin email"
 
-    admin_queue_url = f"{app_url}/admin/dashboard"
+    admin_queue_url = f"{Config.APP_BASE_URL}/admin/dashboard"
 
     body_html = f"""
     <p style="color: #cbd5e1; font-size: 14px; line-height: 1.5; margin-bottom: 16px;">
-        Faculty instructor <strong>{staff.full_name or staff.username}</strong> has submitted a student removal request for administrator review.
+        Faculty instructor <strong>{staff_name}</strong> has submitted a student removal request for administrator review.
     </p>
     <table class="info-table">
         <tr>
             <td style="padding: 10px 14px; border-bottom: 1px solid rgba(255,255,255,0.06); color: #94a3b8; font-size: 13px;">Student</td>
-            <td style="padding: 10px 14px; border-bottom: 1px solid rgba(255,255,255,0.06); color: #ffffff; font-size: 14px; font-weight: 600;">{student.full_name or student.username} (@{student.username})</td>
+            <td style="padding: 10px 14px; border-bottom: 1px solid rgba(255,255,255,0.06); color: #ffffff; font-size: 14px; font-weight: 600;">{student_name}</td>
         </tr>
         <tr>
             <td style="padding: 10px 14px; border-bottom: 1px solid rgba(255,255,255,0.06); color: #94a3b8; font-size: 13px;">Classroom</td>
-            <td style="padding: 10px 14px; border-bottom: 1px solid rgba(255,255,255,0.06); color: #60a5fa; font-size: 14px; font-weight: 700;">{classroom.name}</td>
+            <td style="padding: 10px 14px; border-bottom: 1px solid rgba(255,255,255,0.06); color: #60a5fa; font-size: 14px; font-weight: 700;">{classroom_name}</td>
         </tr>
         <tr>
             <td style="padding: 10px 14px; border-bottom: 1px solid rgba(255,255,255,0.06); color: #94a3b8; font-size: 13px;">Requesting Faculty</td>
-            <td style="padding: 10px 14px; border-bottom: 1px solid rgba(255,255,255,0.06); color: #ffffff; font-size: 14px;">{staff.full_name or staff.username} ({staff.email})</td>
+            <td style="padding: 10px 14px; border-bottom: 1px solid rgba(255,255,255,0.06); color: #ffffff; font-size: 14px;">{staff_name}</td>
         </tr>
         <tr>
-            <td style="padding: 10px 14px; border-bottom: 1px solid rgba(255,255,255,0.06); color: #94a3b8; font-size: 13px;">Stated Reason</td>
+            <td style="padding: 10px 14px; border-bottom: 1px solid rgba(255,255,255,0.06); color: #94a3b8; font-size: 13px;">Reason</td>
             <td style="padding: 10px 14px; border-bottom: 1px solid rgba(255,255,255,0.06); color: #f59e0b; font-size: 13px; font-weight: 600;">{reason}</td>
         </tr>
     </table>
     """
 
-    subject = f"Pending Action: Removal Request for {student.full_name or student.username} in {classroom.name}"
+    subject = f"Pending Action: Removal Request for {student_name} in {classroom_name}"
     html_content = _wrap_html_template("Action Required", "Student Removal Request Submitted", body_html, cta_url=admin_queue_url, cta_text="Review in Admin Queue")
 
     text_content = f"""
-Student Removal Request Submitted
-
-Student: {student.full_name or student.username} (@{student.username})
-Classroom: {classroom.name}
-Faculty: {staff.full_name or staff.username}
+Student Removal Request:
+Student: {student_name}
+Classroom: {classroom_name}
+Faculty: {staff_name}
 Reason: {reason}
-
-Review queue: {admin_queue_url}
 """
     return _send_email_payload(admin_email, subject, html_content, text_content, log_tag="REMOVAL REQUEST ADMIN ALERT")
 
 # -----------------------------------------------------------------------------
 # 5. Removal Request Decision (Student & Staff Notification)
 # -----------------------------------------------------------------------------
-def send_removal_request_decision_email(recipient_email, recipient_name, student, classroom, action, reviewer=None, app_url="http://127.0.0.1:5000"):
-    """Sends notification to user regarding administrator approval/rejection of a removal request."""
+def send_removal_request_decision_email(recipient_email, student_name, classroom_name, action, reviewer_name="Administrator"):
+    """Sends notification regarding administrator approval/rejection of a removal request."""
     if not recipient_email:
         return False, "No recipient email"
 
     is_approved = (action == 'approve')
     status_label = "Approved (Removed from Cohort)" if is_approved else "Rejected (Remains in Cohort)"
     status_color = "#ef4444" if is_approved else "#10b981"
-    reviewer_name = reviewer.full_name or reviewer.username if reviewer else "Administrator"
 
     body_html = f"""
     <p style="color: #cbd5e1; font-size: 14px; line-height: 1.5; margin-bottom: 16px;">
-        The removal request for student <strong>{student.full_name or student.username}</strong> in classroom <strong>{classroom.name}</strong> has been reviewed by <strong>{reviewer_name}</strong>.
+        The removal request for student <strong>{student_name}</strong> in classroom <strong>{classroom_name}</strong> has been reviewed by <strong>{reviewer_name}</strong>.
     </p>
     <table class="info-table">
         <tr>
             <td style="padding: 10px 14px; border-bottom: 1px solid rgba(255,255,255,0.06); color: #94a3b8; font-size: 13px;">Classroom</td>
-            <td style="padding: 10px 14px; border-bottom: 1px solid rgba(255,255,255,0.06); color: #ffffff; font-size: 14px; font-weight: 600;">{classroom.name}</td>
+            <td style="padding: 10px 14px; border-bottom: 1px solid rgba(255,255,255,0.06); color: #ffffff; font-size: 14px; font-weight: 600;">{classroom_name}</td>
         </tr>
         <tr>
             <td style="padding: 10px 14px; border-bottom: 1px solid rgba(255,255,255,0.06); color: #94a3b8; font-size: 13px;">Student</td>
-            <td style="padding: 10px 14px; border-bottom: 1px solid rgba(255,255,255,0.06); color: #ffffff; font-size: 14px;">{student.full_name or student.username} (@{student.username})</td>
+            <td style="padding: 10px 14px; border-bottom: 1px solid rgba(255,255,255,0.06); color: #ffffff; font-size: 14px;">{student_name}</td>
         </tr>
         <tr>
             <td style="padding: 10px 14px; border-bottom: 1px solid rgba(255,255,255,0.06); color: #94a3b8; font-size: 13px;">Decision</td>
@@ -375,57 +337,90 @@ def send_removal_request_decision_email(recipient_email, recipient_name, student
     </table>
     """
 
-    subject = f"Classroom Removal Request {action.capitalize()}: {classroom.name}"
-    html_content = _wrap_html_template("Governance Update", f"Removal Request {action.capitalize()}", body_html, cta_url=f"{app_url}/login", cta_text="Go to Portal")
+    subject = f"Classroom Removal Request {action.capitalize()}: {classroom_name}"
+    html_content = _wrap_html_template("Governance Update", f"Removal Request {action.capitalize()}", body_html, cta_url=f"{Config.APP_BASE_URL}/login", cta_text="Go to Portal")
 
     text_content = f"""
-Removal Request Decision
-
-Classroom: {classroom.name}
-Student: {student.full_name or student.username}
+Removal Request Decision:
+Classroom: {classroom_name}
+Student: {student_name}
 Decision: {status_label}
-Reviewed by: {reviewer_name}
 """
     return _send_email_payload(recipient_email, subject, html_content, text_content, log_tag="REMOVAL DECISION NOTICE")
 
 # -----------------------------------------------------------------------------
-# 6. Password Reset Notification
+# 6. Forgot Password Reset Link Email
 # -----------------------------------------------------------------------------
-def send_password_reset_notification_email(user, new_password=None, app_url="http://127.0.0.1:5000"):
-    """Sends notification to user when an administrator updates their password."""
-    if not user or not user.email:
-        return False, "No user email"
-
-    login_url = f"{app_url}/login"
+def send_password_reset_token_email(recipient_email, recipient_name, reset_url):
+    """Sends password reset link with time-limited token."""
+    if not recipient_email:
+        return False, "No recipient email"
 
     body_html = f"""
     <p style="color: #cbd5e1; font-size: 14px; line-height: 1.5; margin-bottom: 16px;">
-        Hello <strong>{user.full_name or user.username}</strong>, your ScoreTracker portal account password has been updated by the system administrator.
+        Hello <strong>{recipient_name}</strong>,<br>
+        We received a request to reset your password for your <strong>ScoreTracker.io</strong> account. Click the button below to choose a new password:
+    </p>
+    <div style="background: rgba(59, 130, 246, 0.08); border-left: 3px solid #3b82f6; padding: 12px 16px; border-radius: 8px; margin: 16px 0; font-size: 13px; color: #cbd5e1;">
+        <i class="fas fa-clock text-primary"></i> This password reset link is valid for <strong>{Config.PASSWORD_RESET_EXPIRE_MINUTES} minutes</strong> and can only be used once.
+    </div>
+    <p style="color: #94a3b8; font-size: 12px; margin-top: 16px;">
+        If you did not request a password reset, you can safely ignore this email. Your current password remains unchanged.
+    </p>
+    """
+
+    subject = "ScoreTracker.io — Password Reset Request"
+    html_content = _wrap_html_template("Password Reset", "Reset Your Password", body_html, cta_url=reset_url, cta_text="Reset Password")
+
+    text_content = f"""
+Password Reset Request
+
+Hi {recipient_name},
+Click the link below to reset your ScoreTracker password (valid for {Config.PASSWORD_RESET_EXPIRE_MINUTES} minutes):
+{reset_url}
+
+If you did not request this, you can safely ignore this email.
+"""
+    return _send_email_payload(recipient_email, subject, html_content, text_content, log_tag="PASSWORD RESET LINK")
+
+# -----------------------------------------------------------------------------
+# 7. Password Reset Confirmed Notification
+# -----------------------------------------------------------------------------
+def send_password_reset_notification_email(user_email, user_name):
+    """Sends notification to user confirming their password was changed."""
+    if not user_email:
+        return False, "No user email"
+
+    login_url = f"{Config.APP_BASE_URL}/login"
+
+    body_html = f"""
+    <p style="color: #cbd5e1; font-size: 14px; line-height: 1.5; margin-bottom: 16px;">
+        Hello <strong>{user_name}</strong>,<br>
+        Your <strong>ScoreTracker.io</strong> portal account password has been successfully updated.
     </p>
     <div style="background: rgba(239, 68, 68, 0.08); border-left: 3px solid #ef4444; padding: 14px 18px; border-radius: 8px; margin: 16px 0; font-size: 13px; color: #cbd5e1;">
-        <strong>Security Notice:</strong> If you did not request or expect this change, please contact your institution administrator immediately.
+        <strong>Security Notice:</strong> If you did not make this change, please contact your portal administrator immediately.
     </div>
     """
 
     subject = "ScoreTracker.io — Account Password Updated"
-    html_content = _wrap_html_template("Security Alert", "Your Password Has Been Updated", body_html, cta_url=login_url, cta_text="Sign In to Your Account")
+    html_content = _wrap_html_template("Security Notice", "Password Successfully Updated", body_html, cta_url=login_url, cta_text="Sign In")
 
     text_content = f"""
-Password Updated
+Password Updated Successfully
 
-Hello {user.full_name or user.username},
-Your ScoreTracker.io account password has been updated by the administrator.
-
-Sign in at: {login_url}
+Hello {user_name},
+Your ScoreTracker.io account password has been changed.
+If you did not make this change, contact your administrator immediately.
 """
-    return _send_email_payload(user.email, subject, html_content, text_content, log_tag="PASSWORD RESET NOTICE")
+    return _send_email_payload(user_email, subject, html_content, text_content, log_tag="PASSWORD RESET NOTICE")
 
 # -----------------------------------------------------------------------------
-# 7. Account Status Notification (Activated / Deactivated)
+# 8. Account Status Notification (Activated / Deactivated)
 # -----------------------------------------------------------------------------
-def send_account_status_notification_email(user, is_active, app_url="http://127.0.0.1:5000"):
+def send_account_status_notification_email(user_email, user_name, is_active):
     """Sends notification to user when their account is activated or deactivated."""
-    if not user or not user.email:
+    if not user_email:
         return False, "No user email"
 
     status_str = "Activated" if is_active else "Deactivated"
@@ -433,37 +428,16 @@ def send_account_status_notification_email(user, is_active, app_url="http://127.
 
     body_html = f"""
     <p style="color: #cbd5e1; font-size: 14px; line-height: 1.5; margin-bottom: 16px;">
-        Hello <strong>{user.full_name or user.username}</strong>, your account status on the Global Platform Score Tracker has been <strong style="color: {color};">{status_str.lower()}</strong> by an administrator.
+        Hello <strong>{user_name}</strong>, your account status on the Global Platform Score Tracker has been <strong style="color: {color};">{status_str.lower()}</strong> by an administrator.
     </p>
     """
 
     subject = f"ScoreTracker.io Account Status Notice: {status_str}"
-    html_content = _wrap_html_template("Account Notice", f"Account {status_str}", body_html, cta_url=f"{app_url}/login", cta_text="Portal Login")
+    html_content = _wrap_html_template("Account Notice", f"Account {status_str}", body_html, cta_url=f"{Config.APP_BASE_URL}/login", cta_text="Portal Login")
 
     text_content = f"""
-Account Status Notice
-
-Hello {user.full_name or user.username},
+Account Status Notice:
+Hello {user_name},
 Your account status has been updated to: {status_str}
 """
-    return _send_email_payload(user.email, subject, html_content, text_content, log_tag="ACCOUNT STATUS NOTICE")
-
-# -----------------------------------------------------------------------------
-# 8. OTP Verification Email (Optional 2-Step verification)
-# -----------------------------------------------------------------------------
-def send_otp_email(recipient_email, recipient_name, otp_code):
-    """Sends an OTP verification email to the user."""
-    subject = f"{otp_code} is your ScoreTracker Verification Code"
-
-    body_html = f"""
-    <p style="color: #cbd5e1; font-size: 14px;">Hi {recipient_name or 'there'},</p>
-    <p style="color: #cbd5e1; font-size: 14px;">Please use the following 6-digit verification code to complete your two-step login:</p>
-    <div style="background: #0d1527; border: 2px dashed #3b82f6; border-radius: 12px; padding: 18px; text-align: center; margin: 20px 0; font-size: 32px; font-weight: 900; letter-spacing: 8px; color: #60a5fa; font-family: monospace;">
-        {otp_code}
-    </div>
-    <p style="color: #94a3b8; font-size: 13px;">This code will expire in <strong>{Config.OTP_EXPIRE_MINUTES} minutes</strong>.</p>
-    """
-    html_content = _wrap_html_template("Two-Step Verification", "Verify Your Identity", body_html)
-    text_content = f"Your ScoreTracker OTP is: {otp_code} (Expires in {Config.OTP_EXPIRE_MINUTES} mins)"
-
-    return _send_email_payload(recipient_email, subject, html_content, text_content, log_tag="OTP VERIFICATION")
+    return _send_email_payload(user_email, subject, html_content, text_content, log_tag="ACCOUNT STATUS NOTICE")

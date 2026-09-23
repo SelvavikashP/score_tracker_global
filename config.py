@@ -7,7 +7,7 @@ BASE_DIR = os.path.abspath(os.path.dirname(__file__))
 load_dotenv(os.path.join(BASE_DIR, '.env'))
 
 class Config:
-    """Central application configuration."""
+    """Central application configuration for Score Tracker (MongoDB native)."""
     
     BASE_DIR = BASE_DIR
     
@@ -18,23 +18,18 @@ class Config:
     ENV = os.environ.get('FLASK_ENV', 'development')
     DEBUG = os.environ.get('FLASK_DEBUG', 'False').lower() in ('true', '1', 't')
     
-    # Database Configuration (PostgreSQL in production, SQLite for local dev)
-    database_url = os.environ.get('DATABASE_URL')
-    if database_url:
-        # Normalize postgres:// to postgresql:// for modern SQLAlchemy
-        if database_url.startswith('postgres://'):
-            database_url = database_url.replace('postgres://', 'postgresql://', 1)
-        SQLALCHEMY_DATABASE_URI = database_url
-    else:
-        user_data_dir = os.path.join(BASE_DIR, 'User_data')
-        os.makedirs(user_data_dir, exist_ok=True)
-        SQLALCHEMY_DATABASE_URI = f"sqlite:///{os.path.join(user_data_dir, 'database.db')}"
-        
-    SQLALCHEMY_TRACK_MODIFICATIONS = False
-    SQLALCHEMY_ENGINE_OPTIONS = {
-        'pool_pre_ping': True,
-        'pool_recycle': 300,
-    }
+    # Base URL for public external links and email templates (Production vs Local)
+    APP_BASE_URL = os.environ.get('APP_BASE_URL', 'http://127.0.0.1:5000').rstrip('/')
+    
+    # MongoDB Database Configuration
+    MONGODB_URI = os.environ.get('MONGODB_URI') or os.environ.get('MONGO_URI') or ''
+    MONGODB_DB = os.environ.get('MONGODB_DB', 'score_tracker')
+    
+    # Default Student Password for staff provisioning and bulk import
+    DEFAULT_STUDENT_PASSWORD = os.environ.get('DEFAULT_STUDENT_PASSWORD', 'Student@123')
+    
+    # Demo data opt-in (disabled by default in production)
+    ENABLE_DEMO_DATA = os.environ.get('ENABLE_DEMO_DATA', 'False').lower() in ('true', '1', 't')
     
     # Session & Security Settings
     PERMANENT_SESSION_LIFETIME = timedelta(days=7)
@@ -42,11 +37,11 @@ class Config:
     SESSION_COOKIE_SAMESITE = 'Lax'
     SESSION_COOKIE_SECURE = os.environ.get('SESSION_COOKIE_SECURE', 'False').lower() in ('true', '1', 't')
     
-    # Initial Admin Bootstrap (Configured exclusively via environment variables or defaults)
+    # Initial Admin Bootstrap (Configured via environment variables)
     INITIAL_ADMIN_EMAIL = os.environ.get('INITIAL_ADMIN_EMAIL', 'selvavikash000@gmail.com')
     INITIAL_ADMIN_USERNAME = os.environ.get('INITIAL_ADMIN_USERNAME', 'Selva vikash')
     INITIAL_ADMIN_PASSWORD = os.environ.get('INITIAL_ADMIN_PASSWORD', 'Admin@000')
-    INITIAL_ADMIN_FULLNAME = os.environ.get('INITIAL_ADMIN_FULLNAME', 'Admin_User')
+    INITIAL_ADMIN_FULLNAME = os.environ.get('INITIAL_ADMIN_FULLNAME', 'System Admin')
     
     # Platform Sync & Caching Settings
     SYNC_CACHE_MINUTES = int(os.environ.get('SYNC_CACHE_MINUTES', 30))
@@ -58,7 +53,10 @@ class Config:
     # Scheduler Settings
     SCHEDULER_API_ENABLED = False
     
-    # Email & Notification Settings (Email verification disabled by default; registration welcome emails enabled)
+    # Password Reset Token Settings
+    PASSWORD_RESET_EXPIRE_MINUTES = int(os.environ.get('PASSWORD_RESET_EXPIRE_MINUTES', 15))
+    
+    # Email & Notification Settings
     REQUIRE_EMAIL_VERIFICATION = os.environ.get('REQUIRE_EMAIL_VERIFICATION', 'False').lower() in ('true', '1', 't')
     OTP_EXPIRE_MINUTES = int(os.environ.get('OTP_EXPIRE_MINUTES', 10))
     SMTP_HOST = os.environ.get('SMTP_HOST')

@@ -1,9 +1,9 @@
 from functools import wraps
 from flask import session, flash, redirect, url_for, abort, g, request
-from models import User, Classroom, ClassroomMembership, db
+from models_mongo import User, Classroom, ClassroomMembership
 
 def get_current_user():
-    """Retrieves the authenticated user from the database or flask.g context."""
+    """Retrieves the authenticated user from MongoDB or flask.g context."""
     if 'current_user' in g:
         return g.current_user
 
@@ -12,7 +12,7 @@ def get_current_user():
         g.current_user = None
         return None
 
-    user = db.session.get(User, user_id)
+    user = User.find_by_id(user_id)
     if not user or not user.is_active:
         # Invalid or deactivated user
         session.clear()
@@ -57,12 +57,12 @@ def verify_classroom_ownership(classroom_id, user):
     Ensures that the classroom belongs to the staff member or user is admin.
     Returns the Classroom object or aborts 404/403.
     """
-    classroom = db.session.get(Classroom, classroom_id)
+    classroom = Classroom.find_by_id(classroom_id)
     if not classroom:
         abort(404)
     if user.role == 'admin':
         return classroom
-    if user.role == 'staff' and classroom.staff_id == user.id:
+    if user.role == 'staff' and str(classroom.staff_id) == str(user.id):
         return classroom
     abort(403)
 
@@ -73,20 +73,19 @@ def verify_classroom_access(classroom_id, user):
     - Staff: Only if created by that staff
     - Student: Only if active member of the classroom
     """
-    classroom = db.session.get(Classroom, classroom_id)
+    classroom = Classroom.find_by_id(classroom_id)
     if not classroom:
         abort(404)
     if user.role == 'admin':
         return classroom
-    if user.role == 'staff' and classroom.staff_id == user.id:
+    if user.role == 'staff' and str(classroom.staff_id) == str(user.id):
         return classroom
     if user.role == 'student':
-        membership = ClassroomMembership.query.filter_by(
-            classroom_id=classroom_id,
-            student_id=user.id,
-            status='active'
-        ).first()
-        if membership:
+        membership = ClassroomMembership.find_one(
+            classroom_id=classroom.id,
+            student_id=user.id
+        )
+        if membership and membership.status == 'active':
             return classroom
     abort(403)
 
@@ -97,20 +96,18 @@ def verify_student_access(student_id, user):
     - Student: Only their own account (IDOR defense)
     - Staff: Only students belonging to classrooms owned by this staff member
     """
-    student = db.session.get(User, student_id)
+    student = User.find_by_id(student_id)
     if not student or student.role != 'student':
         abort(404)
     if user.role == 'admin':
         return student
-    if user.role == 'student' and user.id == student_id:
+    if user.role == 'student' and str(user.id) == str(student.id):
         return student
     if user.role == 'staff':
         # Check if student is in any classroom created by this staff
-        shared_class = ClassroomMembership.query.join(Classroom).filter(
-            Classroom.staff_id == user.id,
-            ClassroomMembership.student_id == student_id,
-            ClassroomMembership.status == 'active'
-        ).first()
-        if shared_class:
-            return student
+        staff_classrooms = Classroom.find_by_staff_id(user.id, status='active')
+        for c in staff_classrooms:
+            m = ClassroomMembership.find_one(classroom_id=c.id, student_id=student.id)
+            if m and m.status == 'active':
+                return student
     abort(403)
