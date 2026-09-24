@@ -570,5 +570,95 @@ class TestMongoDBEnterpriseScoreTracker(unittest.TestCase):
         self.assertIsNotNone(staff_db)
         self.assertEqual(staff_db.role, 'staff')
 
+    def test_14_login_by_username_and_email_flexibility(self):
+        """Verify login succeeds using either Email or Username with case-insensitivity."""
+        admin = User.find_by_email(Config.INITIAL_ADMIN_EMAIL)
+        admin_pass = Config.INITIAL_ADMIN_PASSWORD
+        student = self.__class__.test_student
+
+        # Case 1: Admin login via exact email
+        with self.client.session_transaction() as sess:
+            sess.clear()
+        resp_email = self.client.post('/login/admin', data={
+            'email': admin.email,
+            'password': admin_pass,
+            'target_role': 'admin'
+        }, follow_redirects=False)
+        self.assertEqual(resp_email.status_code, 302)
+        self.assertIn('/admin/dashboard', resp_email.headers.get('Location', ''))
+
+        # Case 2: Admin login via exact username (e.g. "Selva vikash")
+        with self.client.session_transaction() as sess:
+            sess.clear()
+        resp_uname = self.client.post('/login/admin', data={
+            'email': admin.username,
+            'password': admin_pass,
+            'target_role': 'admin'
+        }, follow_redirects=False)
+        self.assertEqual(resp_uname.status_code, 302)
+        self.assertIn('/admin/dashboard', resp_uname.headers.get('Location', ''))
+
+        # Case 3: Admin login with uppercase username (e.g. "SELVA VIKASH")
+        with self.client.session_transaction() as sess:
+            sess.clear()
+        resp_upper_uname = self.client.post('/login/admin', data={
+            'email': admin.username.upper(),
+            'password': admin_pass,
+            'target_role': 'admin'
+        }, follow_redirects=False)
+        self.assertEqual(resp_upper_uname.status_code, 302)
+        self.assertIn('/admin/dashboard', resp_upper_uname.headers.get('Location', ''))
+
+        # Case 4: Student login via username
+        with self.client.session_transaction() as sess:
+            sess.clear()
+        resp_stu_uname = self.client.post('/login/student', data={
+            'email': student.username,
+            'password': 'Student@ResetPassword123!',
+            'target_role': 'student'
+        }, follow_redirects=False)
+        self.assertEqual(resp_stu_uname.status_code, 302)
+        self.assertIn('/student/dashboard', resp_stu_uname.headers.get('Location', ''))
+
+        # Case 5: Invalid password fails gracefully
+        with self.client.session_transaction() as sess:
+            sess.clear()
+        resp_invalid = self.client.post('/login/student', data={
+            'email': student.username,
+            'password': 'WrongPassword123!',
+            'target_role': 'student'
+        }, follow_redirects=False)
+        self.assertEqual(resp_invalid.status_code, 200)
+        with self.client.session_transaction() as sess:
+            self.assertNotIn('user_id', sess)
+
+    def test_15_global_leaderboard_and_classroom_routing(self):
+        """Verify public leaderboard and smart classroom routing."""
+        student = self.__class__.test_student
+        classroom = self.__class__.test_classroom
+        staff = User.find_by_email(f"staff_{self.test_tag}@university.edu")
+
+        # Public leaderboard loads with data
+        resp_lb = self.client.get('/leaderboard')
+        self.assertEqual(resp_lb.status_code, 200)
+
+        # Smart classroom route for student -> /student/classroom/<id>
+        with self.client.session_transaction() as sess:
+            sess['user_id'] = student.id
+            sess['username'] = student.username
+            sess['role'] = 'student'
+        resp_st_route = self.client.get(f"/classroom/{classroom.id}", follow_redirects=False)
+        self.assertEqual(resp_st_route.status_code, 302)
+        self.assertIn(f"/student/classroom/{classroom.id}", resp_st_route.headers.get('Location', ''))
+
+        # Smart classroom route for staff -> /staff/classroom/<id>
+        with self.client.session_transaction() as sess:
+            sess['user_id'] = staff.id
+            sess['username'] = staff.username
+            sess['role'] = 'staff'
+        resp_sf_route = self.client.get(f"/classroom/{classroom.id}", follow_redirects=False)
+        self.assertEqual(resp_sf_route.status_code, 302)
+        self.assertIn(f"/staff/classroom/{classroom.id}", resp_sf_route.headers.get('Location', ''))
+
 if __name__ == '__main__':
     unittest.main(verbosity=2)

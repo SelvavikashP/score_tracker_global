@@ -59,14 +59,14 @@
 
                 <div class="mb-3">
                     <label for="email" class="form-label">
-                        {% if active_role == 'admin' %}Administrator Email Address
-                        {% elif active_role == 'staff' %}Faculty Email Address
-                        {% else %}Student Email Address{% endif %}
+                        {% if active_role == 'admin' %}Administrator Email or Username
+                        {% elif active_role == 'staff' %}Faculty Email or Username
+                        {% else %}Student Email or Username{% endif %}
                     </label>
                     <div class="position-relative">
-                        <input type="email" class="form-control" id="email" name="email" 
-                               placeholder="{% if active_role == 'admin' %}admin@scoretracker.io{% elif active_role == 'staff' %}professor@university.edu{% else %}student@university.edu{% endif %}" 
-                               required autocomplete="email" autofocus>
+                        <input type="text" class="form-control" id="email" name="email" 
+                               placeholder="{% if active_role == 'admin' %}admin or admin@scoretracker.io{% elif active_role == 'staff' %}professor or prof@university.edu{% else %}student or student@university.edu{% endif %}" 
+                               required autocomplete="username" autofocus>
                     </div>
                 </div>
 

@@ -181,7 +181,8 @@ def handle_role_login(target_role=None):
         password = (request.form.get('password') or '').strip()
         form_role = (request.form.get('target_role') or role).strip().lower()
 
-        user = User.find_by_email(norm_email)
+        # Support login by Email OR Username (case-insensitive)
+        user = User.find_by_email(norm_email) or User.find_by_username(email_raw)
         if user and user.check_password(password):
             if not user.is_active:
                 flash('Your account has been deactivated. Please contact the portal administrator.', 'danger')
@@ -192,7 +193,7 @@ def handle_role_login(target_role=None):
                 if form_role == 'admin' and user.role != 'admin':
                     flash(f'Access denied: Account "@{user.username}" does not have Administrator privileges.', 'danger')
                     return redirect(url_for('login_admin'))
-                elif form_role == 'staff' and user.role != 'staff' and user.role != 'admin':
+                elif form_role == 'staff' and user.role not in ('staff', 'admin'):
                     flash(f'Access denied: Account "@{user.username}" is not registered as Faculty/Staff.', 'danger')
                     return redirect(url_for('login_staff'))
 
@@ -202,12 +203,13 @@ def handle_role_login(target_role=None):
             session['user_id'] = user.id
             session['username'] = user.username
             session['role'] = user.role
+            session['last_activity'] = datetime.now(timezone.utc).timestamp()
 
             user.update_last_login()
 
             AuditLog.log(
                 event_type='LOGIN_SUCCESS',
-                description=f'User {user.email} ({user.role}) logged in successfully.',
+                description=f'User @{user.username} ({user.email}, {user.role}) logged in successfully.',
                 actor_id=user.id,
                 actor_role=user.role,
                 ip_address=request.remote_addr
@@ -233,11 +235,11 @@ def handle_role_login(target_role=None):
         else:
             AuditLog.log(
                 event_type='LOGIN_FAILURE',
-                description=f'Failed login attempt for email: {email_raw}',
+                description=f'Failed login attempt for identifier: {email_raw}',
                 ip_address=request.remote_addr,
                 result='failure'
             )
-            flash('Invalid email or password. Please check your credentials.', 'danger')
+            flash('Invalid username/email or password. Please check your credentials.', 'danger')
 
     return render_template('login.html', active_role=role)
 

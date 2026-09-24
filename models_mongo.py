@@ -1,5 +1,6 @@
 import secrets
 import hashlib
+import re
 from datetime import datetime, timezone, timedelta, date
 from bson.objectid import ObjectId
 from werkzeug.security import generate_password_hash, check_password_hash
@@ -17,6 +18,24 @@ def utc_now():
 def normalize_email(email):
     """Trims whitespace and converts email to lowercase."""
     return (email or '').strip().lower()
+
+def safe_int(val, default=0):
+    """Safely parses integer from int, float, or string representations."""
+    if val is None or val == '':
+        return default
+    try:
+        return int(float(val))
+    except Exception:
+        return default
+
+def safe_float(val, default=0.0):
+    """Safely parses float from int, float, or string representations."""
+    if val is None or val == '':
+        return default
+    try:
+        return float(val)
+    except Exception:
+        return default
 
 def to_object_id(val):
     """Converts a value to ObjectId if valid, else returns original string."""
@@ -60,7 +79,10 @@ class User:
     def check_password(self, candidate_password):
         if not self.password_hash or not candidate_password:
             return False
-        return check_password_hash(self.password_hash, candidate_password)
+        try:
+            return check_password_hash(self.password_hash, str(candidate_password))
+        except Exception:
+            return False
 
     def set_password(self, new_password):
         self.password_hash = generate_password_hash(new_password)
@@ -162,8 +184,11 @@ class User:
             return None
         col = get_users_col()
         doc = col.find_one({'_id': to_object_id(user_id)})
-        if not doc and isinstance(user_id, int):
-            doc = col.find_one({'legacy_id': user_id})
+        if not doc:
+            try:
+                doc = col.find_one({'$or': [{'legacy_id': int(user_id)}, {'legacy_id': str(user_id)}]})
+            except Exception:
+                pass
         return cls(doc) if doc else None
 
     @classmethod
@@ -172,7 +197,7 @@ class User:
             return None
         norm = normalize_email(email)
         col = get_users_col()
-        doc = col.find_one({'email_normalized': norm})
+        doc = col.find_one({'$or': [{'email_normalized': norm}, {'email': norm}, {'email': email.strip()}]})
         return cls(doc) if doc else None
 
     @classmethod
@@ -180,7 +205,9 @@ class User:
         if not username:
             return None
         col = get_users_col()
-        doc = col.find_one({'username': username.strip()})
+        u_str = username.strip()
+        escaped_username = re.escape(u_str)
+        doc = col.find_one({'username': re.compile(f'^{escaped_username}$', re.IGNORECASE)})
         return cls(doc) if doc else None
 
     @classmethod
@@ -272,8 +299,11 @@ class Classroom:
             return None
         col = get_classrooms_col()
         doc = col.find_one({'_id': to_object_id(classroom_id)})
-        if not doc and isinstance(classroom_id, int):
-            doc = col.find_one({'legacy_id': classroom_id})
+        if not doc:
+            try:
+                doc = col.find_one({'$or': [{'legacy_id': int(classroom_id)}, {'legacy_id': str(classroom_id)}]})
+            except Exception:
+                pass
         return cls(doc) if doc else None
 
     @classmethod
@@ -412,12 +442,12 @@ class PlatformProfile:
         self.platform = doc.get('platform', '')
         self.handle = doc.get('handle', '')
         self.profile_url = doc.get('profile_url', '')
-        self.rating = int(doc.get('rating', 0) or 0)
+        self.rating = safe_int(doc.get('rating', 0))
         self.rank = doc.get('rank', 'Unrated')
-        self.global_rank = int(doc.get('global_rank', 0) or 0)
-        self.country_rank = int(doc.get('country_rank', 0) or 0)
-        self.recent_problems = int(doc.get('recent_problems', 0) or 0)
-        self.total_contests = int(doc.get('total_contests', 0) or 0)
+        self.global_rank = safe_int(doc.get('global_rank', 0))
+        self.country_rank = safe_int(doc.get('country_rank', 0))
+        self.recent_problems = safe_int(doc.get('recent_problems', 0))
+        self.total_contests = safe_int(doc.get('total_contests', 0))
         self.last_synced_at = doc.get('last_synced_at')
         self.sync_status = doc.get('sync_status', 'pending')
         self.sync_error = doc.get('sync_error')
@@ -468,12 +498,12 @@ class PlatformProfile:
             'platform': platform,
             'handle': data.get('handle', ''),
             'profile_url': data.get('profile_url', ''),
-            'rating': int(data.get('rating', 0) or 0),
+            'rating': safe_int(data.get('rating', 0)),
             'rank': data.get('rank', 'Unrated'),
-            'global_rank': int(data.get('global_rank', 0) or 0),
-            'country_rank': int(data.get('country_rank', 0) or 0),
-            'recent_problems': int(data.get('recent_problems', 0) or 0),
-            'total_contests': int(data.get('total_contests', 0) or 0),
+            'global_rank': safe_int(data.get('global_rank', 0)),
+            'country_rank': safe_int(data.get('country_rank', 0)),
+            'recent_problems': safe_int(data.get('recent_problems', 0)),
+            'total_contests': safe_int(data.get('total_contests', 0)),
             'last_synced_at': data.get('last_synced_at', utc_now()),
             'sync_status': data.get('sync_status', 'success'),
             'sync_error': data.get('sync_error')
@@ -501,16 +531,16 @@ class PerformanceSnapshot:
         self.user_id = str(doc.get('user_id', ''))
         self.platform = doc.get('platform', '')
         self.snapshot_date = doc.get('snapshot_date')
-        self.rating = int(doc.get('rating', 0) or 0)
-        self.rating_delta = int(doc.get('rating_delta', 0) or 0)
+        self.rating = safe_int(doc.get('rating', 0))
+        self.rating_delta = safe_int(doc.get('rating_delta', 0))
         self.rank = doc.get('rank', 'Unrated')
-        self.global_rank = int(doc.get('global_rank', 0) or 0)
-        self.country_rank = int(doc.get('country_rank', 0) or 0)
-        self.problems_solved = int(doc.get('problems_solved', 0) or 0)
-        self.problems_solved_delta = int(doc.get('problems_solved_delta', 0) or 0)
-        self.contests = int(doc.get('contests', 0) or 0)
-        self.contests_delta = int(doc.get('contests_delta', 0) or 0)
-        self.calculated_score = float(doc.get('calculated_score', 0.0) or 0.0)
+        self.global_rank = safe_int(doc.get('global_rank', 0))
+        self.country_rank = safe_int(doc.get('country_rank', 0))
+        self.problems_solved = safe_int(doc.get('problems_solved', 0))
+        self.problems_solved_delta = safe_int(doc.get('problems_solved_delta', 0))
+        self.contests = safe_int(doc.get('contests', 0))
+        self.contests_delta = safe_int(doc.get('contests_delta', 0))
+        self.calculated_score = safe_float(doc.get('calculated_score', 0.0))
         self.created_at = doc.get('created_at', utc_now())
 
     @classmethod
@@ -532,16 +562,16 @@ class PerformanceSnapshot:
             'user_id': str(data.get('user_id')),
             'platform': data.get('platform'),
             'snapshot_date': data.get('snapshot_date') or datetime.now(timezone.utc).strftime('%Y-%m-%d'),
-            'rating': int(data.get('rating', 0) or 0),
-            'rating_delta': int(data.get('rating_delta', 0) or 0),
+            'rating': safe_int(data.get('rating', 0)),
+            'rating_delta': safe_int(data.get('rating_delta', 0)),
             'rank': data.get('rank', 'Unrated'),
-            'global_rank': int(data.get('global_rank', 0) or 0),
-            'country_rank': int(data.get('country_rank', 0) or 0),
-            'problems_solved': int(data.get('problems_solved', 0) or 0),
-            'problems_solved_delta': int(data.get('problems_solved_delta', 0) or 0),
-            'contests': int(data.get('contests', 0) or 0),
-            'contests_delta': int(data.get('contests_delta', 0) or 0),
-            'calculated_score': float(data.get('calculated_score', 0.0) or 0.0),
+            'global_rank': safe_int(data.get('global_rank', 0)),
+            'country_rank': safe_int(data.get('country_rank', 0)),
+            'problems_solved': safe_int(data.get('problems_solved', 0)),
+            'problems_solved_delta': safe_int(data.get('problems_solved_delta', 0)),
+            'contests': safe_int(data.get('contests', 0)),
+            'contests_delta': safe_int(data.get('contests_delta', 0)),
+            'calculated_score': safe_float(data.get('calculated_score', 0.0)),
             'created_at': data.get('created_at', utc_now())
         }
         res = col.find_one_and_update(
