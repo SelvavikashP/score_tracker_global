@@ -94,19 +94,28 @@
                 </button>
             </form>
 
-            <!-- Contextual Footer Help Links -->
+            <!-- Contextual Footer Help & Registration Links -->
             <div class="text-center pt-3 mt-3 border-top" style="border-color: var(--border-subtle) !important;">
                 {% if active_role == 'student' %}
-                <p class="text-secondary small mb-0">
-                    <i class="fas fa-info-circle me-1"></i>Student accounts are provisioned directly by your course instructor. Default initial password: <code class="text-secondary">Student@123</code>
+                <p class="text-secondary small mb-2">
+                    Don't have an account? 
+                    <a href="{{ url_for('signup', role='student') }}" class="text-primary text-decoration-none fw-bold ms-1">
+                        Create Student Account &rarr;
+                    </a>
+                </p>
+                <p class="text-muted small mb-0" style="font-size: 0.75rem;">
+                    <i class="fas fa-info-circle me-1"></i>If your instructor provisioned your email, your default password is <code class="text-secondary">Student@123</code>.
                 </p>
                 {% elif active_role == 'staff' %}
                 <p class="text-secondary small mb-0">
-                    Faculty access is managed by portal administrators.
+                    New instructor or faculty member? 
+                    <a href="{{ url_for('signup', role='staff') }}" class="text-decoration-none fw-bold ms-1" style="color: #a78bfa;">
+                        Register Faculty Account &rarr;
+                    </a>
                 </p>
                 {% elif active_role == 'admin' %}
                 <p class="text-secondary small mb-0">
-                    Administrator access is restricted to authorized portal operators.
+                    Administrator access is configured via system security policy.
                 </p>
                 {% endif %}
             </div>

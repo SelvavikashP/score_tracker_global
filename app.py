@@ -258,16 +258,109 @@ def login_admin():
     return handle_role_login(target_role='admin')
 
 @app.route('/signup', methods=['GET', 'POST'])
+@app.route('/register', methods=['GET', 'POST'])
+@app.route('/signup/student', methods=['GET', 'POST'], endpoint='signup_student')
+@app.route('/signup/staff', methods=['GET', 'POST'], endpoint='signup_staff')
 def signup():
     """
-    Public student registration is disabled in enterprise configuration.
-    Student accounts are provisioned directly by faculty/administrators.
+    Self-service account registration for Students and Faculty/Staff.
+    Creates account in MongoDB Atlas and dispatches welcome confirmation email.
     """
     if get_current_user():
         return redirect(url_for('index'))
 
-    flash('Public student self-registration is disabled. Student accounts are provisioned directly by course instructors or administrators.', 'info')
-    return redirect(url_for('login_student'))
+    # Determine default active role from route endpoint or query args
+    if request.endpoint == 'signup_staff':
+        active_role = 'staff'
+    elif request.endpoint == 'signup_student':
+        active_role = 'student'
+    else:
+        active_role = request.args.get('role') or 'student'
+    if active_role not in ('student', 'staff'):
+        active_role = 'student'
+
+    if request.method == 'POST':
+        full_name = (request.form.get('full_name') or '').strip()
+        username = (request.form.get('username') or '').strip()
+        email_raw = (request.form.get('email') or '').strip()
+        norm_email = normalize_email(email_raw)
+        password = (request.form.get('password') or '').strip()
+        role = (request.form.get('role') or active_role).strip().lower()
+        student_id = (request.form.get('student_identifier') or '').strip()
+
+        if role not in ('student', 'staff'):
+            role = 'student'
+
+        if not full_name or not username or not norm_email or not password:
+            flash('All required fields (Full Name, Username, Email, Password) must be provided.', 'danger')
+            return render_template('signup.html', active_role=role)
+
+        if len(password) < 6:
+            flash('Password must be at least 6 characters long.', 'warning')
+            return render_template('signup.html', active_role=role)
+
+        if User.find_by_email(norm_email):
+            flash('An account with this email address already exists. Please sign in.', 'warning')
+            return redirect(url_for('login_student' if role == 'student' else 'login_staff'))
+
+        if User.find_by_username(username):
+            flash('This username is already in use. Please choose a different username.', 'warning')
+            return render_template('signup.html', active_role=role)
+
+        new_user = User.create({
+            'email': email_raw,
+            'username': username,
+            'full_name': full_name,
+            'student_identifier': student_id if (student_id and role == 'student') else None,
+            'password_hash': generate_password_hash(password),
+            'role': role,
+            'is_active': True,
+            'is_email_verified': True,
+            'must_change_password': False,
+            'account_source': 'self_registered'
+        })
+
+        AuditLog.log(
+            event_type='USER_REGISTERED',
+            description=f'New {role} account registered: @{username} ({new_user.email})',
+            actor_id=new_user.id,
+            actor_role=new_user.role,
+            target_type='User',
+            target_id=new_user.id,
+            ip_address=request.remote_addr
+        )
+
+        try:
+            portal_login_url = f"{Config.APP_BASE_URL.rstrip('/')}/login/{role}"
+            send_welcome_email(
+                recipient_email=new_user.email,
+                recipient_name=new_user.full_name,
+                username=new_user.username,
+                role=new_user.role,
+                student_identifier=new_user.student_identifier,
+                login_url=portal_login_url,
+                is_newly_provisioned=False
+            )
+        except Exception as e:
+            app.logger.warning(f"Could not send welcome email: {e}")
+
+        # Automatically initialize authenticated session
+        session.clear()
+        session.permanent = True
+        session['user_id'] = new_user.id
+        session['username'] = new_user.username
+        session['role'] = new_user.role
+        session['last_activity'] = datetime.now(timezone.utc).timestamp()
+        new_user.update_last_login()
+
+        flash(f'Account created successfully! Welcome to ScoreTracker.io, {new_user.full_name}!', 'success')
+        if role == 'student':
+            return redirect(url_for('student_dashboard'))
+        elif role == 'staff':
+            return redirect(url_for('staff_dashboard'))
+        return redirect(url_for('index'))
+
+    return render_template('signup.html', active_role=active_role)
 
 @app.route('/logout')
 def logout():

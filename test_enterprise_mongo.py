@@ -518,5 +518,57 @@ class TestMongoDBEnterpriseScoreTracker(unittest.TestCase):
         resp_active = self.client.get('/student/dashboard')
         self.assertEqual(resp_active.status_code, 200)
 
+    def test_13_self_registration_for_student_and_staff(self):
+        """Verify self-service registration for students and faculty."""
+        with self.client.session_transaction() as sess:
+            sess.clear()
+
+        # Step 1: GET signup page
+        get_resp = self.client.get('/signup')
+        self.assertEqual(get_resp.status_code, 200)
+
+        # Step 2: Register a new student
+        stu_email = f"self_student_{self.test_tag}@university.edu"
+        stu_uname = f"stu_{self.test_tag}"
+        reg_stu = self.client.post('/signup', data={
+            'full_name': 'Self Registered Student',
+            'username': stu_uname,
+            'email': stu_email,
+            'password': 'StudentSecret123!',
+            'role': 'student',
+            'student_identifier': 'ID-SELF-99'
+        }, follow_redirects=False)
+        self.assertEqual(reg_stu.status_code, 302)
+        self.assertIn('/student/dashboard', reg_stu.headers.get('Location', ''))
+
+        # Verify user created in MongoDB
+        stu_db = User.find_by_email(stu_email)
+        self.assertIsNotNone(stu_db)
+        self.assertEqual(stu_db.role, 'student')
+        self.assertFalse(stu_db.must_change_password)
+        self.assertTrue(stu_db.check_password('StudentSecret123!'))
+
+        # Step 3: Register a new faculty staff
+        with self.client.session_transaction() as sess:
+            sess.clear()
+
+        staff_email = f"self_faculty_{self.test_tag}@university.edu"
+        staff_uname = f"fac_{self.test_tag}"
+        reg_staff = self.client.post('/signup', data={
+            'full_name': 'Self Registered Professor',
+            'username': staff_uname,
+            'email': staff_email,
+            'password': 'FacultySecret123!',
+            'role': 'staff',
+            'student_identifier': 'Dept of CS'
+        }, follow_redirects=False)
+        self.assertEqual(reg_staff.status_code, 302)
+        self.assertIn('/staff/dashboard', reg_staff.headers.get('Location', ''))
+
+        # Verify staff in MongoDB
+        staff_db = User.find_by_email(staff_email)
+        self.assertIsNotNone(staff_db)
+        self.assertEqual(staff_db.role, 'staff')
+
 if __name__ == '__main__':
     unittest.main(verbosity=2)
