@@ -47,6 +47,22 @@ with app.app_context():
 
 @app.before_request
 def load_user_context():
+    # 1-Hour Session Inactivity Timeout Enforcement
+    if session.get('user_id'):
+        last_active = session.get('last_activity')
+        now_ts = datetime.now(timezone.utc).timestamp()
+        timeout_seconds = getattr(Config, 'SESSION_INACTIVITY_TIMEOUT_SECONDS', 3600)  # 1 hour
+        
+        if last_active and (now_ts - last_active > timeout_seconds):
+            session.clear()
+            g.current_user = None
+            flash('Your session has expired due to 1 hour of inactivity. Please sign in again.', 'info')
+            return redirect(url_for('login'))
+        
+        # Refresh last activity timestamp and keep session permanent
+        session['last_activity'] = now_ts
+        session.permanent = True
+
     g.current_user = get_current_user()
     
     # Enforce mandatory first-login password change for students
@@ -98,6 +114,28 @@ def index():
             return redirect(url_for('staff_dashboard'))
         elif user.role == 'admin':
             return redirect(url_for('admin_dashboard'))
+    return redirect(url_for('login'))
+
+@app.route('/classroom/<classroom_id>')
+def classroom_shortcut(classroom_id):
+    user = get_current_user()
+    if not user:
+        return redirect(url_for('login', next=request.path))
+    if user.role == 'student':
+        return redirect(url_for('student_classroom_leaderboard', classroom_id=classroom_id))
+    elif user.role in ('staff', 'admin'):
+        return redirect(url_for('staff_classroom_detail', classroom_id=classroom_id))
+    return redirect(url_for('index'))
+
+@app.route('/classroom/join/<path:token>')
+def classroom_join_legacy(token):
+    user = get_current_user()
+    flash('Classroom invitation links have been replaced with direct instructor enrollment. Check your dashboard for active classrooms.', 'info')
+    if user:
+        if user.role == 'student':
+            return redirect(url_for('student_dashboard'))
+        elif user.role == 'staff':
+            return redirect(url_for('staff_dashboard'))
     return redirect(url_for('login'))
 
 @app.route('/leaderboard')
@@ -502,7 +540,18 @@ def student_sync_profiles():
 @login_required
 def student_classroom_leaderboard(classroom_id):
     user = get_current_user()
-    classroom = verify_classroom_access(classroom_id, user)
+    if user.role in ('staff', 'admin'):
+        return redirect(url_for('staff_classroom_detail', classroom_id=classroom_id))
+
+    classroom = Classroom.find_by_id(classroom_id)
+    if not classroom:
+        flash('The requested classroom was not found.', 'warning')
+        return redirect(url_for('student_dashboard'))
+
+    membership = ClassroomMembership.find_one(classroom.id, user.id)
+    if not membership or membership.status != 'active':
+        flash(f'You are not enrolled in classroom "{classroom.name}". Please ask your faculty instructor to enroll your email.', 'warning')
+        return redirect(url_for('student_dashboard'))
 
     memberships = ClassroomMembership.find_by_classroom_id(classroom.id, status='active')
     student_scores = []

@@ -489,5 +489,34 @@ class TestMongoDBEnterpriseScoreTracker(unittest.TestCase):
         u_resp = self.client.get("/admin/users/export")
         self.assertEqual(u_resp.status_code, 200)
 
+    def test_12_session_inactivity_timeout(self):
+        """Verify session timeout after 1 hour of inactivity."""
+        student = self.__class__.test_student
+
+        # Case 1: Inactive session for > 3600 seconds (e.g. 3650s)
+        with self.client.session_transaction() as sess:
+            sess['user_id'] = student.id
+            sess['username'] = student.username
+            sess['role'] = 'student'
+            sess['last_activity'] = datetime.now(timezone.utc).timestamp() - 3650
+
+        resp = self.client.get('/student/dashboard', follow_redirects=False)
+        self.assertEqual(resp.status_code, 302)
+        self.assertIn('/login', resp.headers.get('Location', ''))
+
+        # Verify session cleared
+        with self.client.session_transaction() as sess:
+            self.assertNotIn('user_id', sess)
+
+        # Case 2: Active session within 1 hour (e.g. 300s ago)
+        with self.client.session_transaction() as sess:
+            sess['user_id'] = student.id
+            sess['username'] = student.username
+            sess['role'] = 'student'
+            sess['last_activity'] = datetime.now(timezone.utc).timestamp() - 300
+
+        resp_active = self.client.get('/student/dashboard')
+        self.assertEqual(resp_active.status_code, 200)
+
 if __name__ == '__main__':
     unittest.main(verbosity=2)

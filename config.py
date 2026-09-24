@@ -31,8 +31,9 @@ class Config:
     # Demo data opt-in (disabled by default in production)
     ENABLE_DEMO_DATA = os.environ.get('ENABLE_DEMO_DATA', 'False').lower() in ('true', '1', 't')
     
-    # Session & Security Settings
-    PERMANENT_SESSION_LIFETIME = timedelta(days=7)
+    # Session & Security Settings (1-hour inactivity timeout)
+    PERMANENT_SESSION_LIFETIME = timedelta(hours=1)
+    SESSION_INACTIVITY_TIMEOUT_SECONDS = int(os.environ.get('SESSION_INACTIVITY_TIMEOUT_SECONDS', 3600))  # 1 hour (3600s)
     SESSION_COOKIE_HTTPONLY = True
     SESSION_COOKIE_SAMESITE = 'Lax'
     SESSION_COOKIE_SECURE = os.environ.get('SESSION_COOKIE_SECURE', 'False').lower() in ('true', '1', 't')
