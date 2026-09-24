@@ -18,42 +18,49 @@ def _send_email_payload(recipient_email, subject, html_content, text_content, lo
     Otherwise, logs safe delivery summary to the terminal in Developer Sandbox mode.
     """
     if is_smtp_configured():
-        try:
-            from_email = Config.SMTP_FROM_EMAIL if (Config.SMTP_FROM_EMAIL and Config.SMTP_FROM_EMAIL != 'no-reply@scoretracker.io') else (Config.SMTP_USER or 'no-reply@scoretracker.io')
-            from_header = f"ScoreTracker Portal <{from_email}>"
+        from_email = Config.SMTP_FROM_EMAIL if (Config.SMTP_FROM_EMAIL and Config.SMTP_FROM_EMAIL != 'no-reply@scoretracker.io') else (Config.SMTP_USER or 'no-reply@scoretracker.io')
+        from_header = f"ScoreTracker Portal <{from_email}>"
 
-            msg = MIMEMultipart('alternative')
-            msg['Subject'] = subject
-            msg['From'] = from_header
-            msg['To'] = recipient_email
+        msg = MIMEMultipart('alternative')
+        msg['Subject'] = subject
+        msg['From'] = from_header
+        msg['To'] = recipient_email
 
-            part1 = MIMEText(text_content, 'plain')
-            part2 = MIMEText(html_content, 'html')
-            msg.attach(part1)
-            msg.attach(part2)
+        part1 = MIMEText(text_content, 'plain')
+        part2 = MIMEText(html_content, 'html')
+        msg.attach(part1)
+        msg.attach(part2)
 
-            context = ssl.create_default_context()
+        context = ssl.create_default_context()
+        last_err = None
 
-            if Config.SMTP_PORT == 465:
-                with smtplib.SMTP_SSL(Config.SMTP_HOST, Config.SMTP_PORT, context=context, timeout=15) as server:
-                    server.login(Config.SMTP_USER, Config.SMTP_PASSWORD)
-                    server.sendmail(from_email, [recipient_email], msg.as_string())
-            else:
-                with smtplib.SMTP(Config.SMTP_HOST, Config.SMTP_PORT, timeout=15) as server:
-                    server.ehlo()
-                    if Config.SMTP_USE_TLS:
-                        server.starttls(context=context)
+        for attempt in range(1, 3):
+            try:
+                if Config.SMTP_PORT == 465:
+                    with smtplib.SMTP_SSL(Config.SMTP_HOST, Config.SMTP_PORT, context=context, timeout=20) as server:
+                        server.login(Config.SMTP_USER, Config.SMTP_PASSWORD)
+                        server.sendmail(from_email, [recipient_email], msg.as_string())
+                else:
+                    with smtplib.SMTP(Config.SMTP_HOST, Config.SMTP_PORT, timeout=20) as server:
                         server.ehlo()
-                    server.login(Config.SMTP_USER, Config.SMTP_PASSWORD)
-                    server.sendmail(from_email, [recipient_email], msg.as_string())
+                        if Config.SMTP_USE_TLS:
+                            server.starttls(context=context)
+                            server.ehlo()
+                        server.login(Config.SMTP_USER, Config.SMTP_PASSWORD)
+                        server.sendmail(from_email, [recipient_email], msg.as_string())
 
-            logger.info(f"[{log_tag}] Successfully delivered SMTP email to {recipient_email} (Subject: '{subject}')")
-            print(f"[SMTP SUCCESS] {log_tag} email delivered to {recipient_email} - '{subject}'")
-            return True, "Email delivered successfully via SMTP."
-        except Exception as e:
-            logger.error(f"[{log_tag}] Failed to send SMTP email to {recipient_email}: {e}")
-            print(f"[SMTP ERROR] Failed to deliver email to {recipient_email}: {e}")
-            return False, f"Live SMTP delivery failed: {e}"
+                logger.info(f"[{log_tag}] Successfully delivered SMTP email to {recipient_email} (Subject: '{subject}')")
+                print(f"[SMTP SUCCESS] {log_tag} email delivered to {recipient_email} - '{subject}'")
+                return True, "Email delivered successfully via SMTP."
+            except Exception as e:
+                last_err = e
+                if attempt < 2:
+                    import time
+                    time.sleep(1)
+
+        logger.error(f"[{log_tag}] Failed to send SMTP email to {recipient_email}: {last_err}")
+        print(f"[SMTP ERROR] Failed to deliver email to {recipient_email}: {last_err}")
+        return False, f"Live SMTP delivery failed: {last_err}"
     else:
         # Safe sandbox logging without printing plaintext secrets
         print(f"[DEV SANDBOX] {log_tag} -> Dispatched simulated email to {recipient_email} (Subject: '{subject}')")
