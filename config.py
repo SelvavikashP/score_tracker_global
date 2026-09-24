@@ -65,4 +65,4 @@ class Config:
     SMTP_USER = os.environ.get('SMTP_USER')
     SMTP_PASSWORD = os.environ.get('SMTP_PASSWORD')
     SMTP_USE_TLS = os.environ.get('SMTP_USE_TLS', 'True').lower() in ('true', '1', 't')
-    SMTP_FROM_EMAIL = os.environ.get('SMTP_FROM_EMAIL', 'no-reply@scoretracker.io')
+    SMTP_FROM_EMAIL = os.environ.get('SMTP_FROM_EMAIL', 'scoretraccker@gmail.com')

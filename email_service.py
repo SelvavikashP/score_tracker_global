@@ -18,7 +18,7 @@ def _send_email_payload(recipient_email, subject, html_content, text_content, lo
     Otherwise, logs safe delivery summary to the terminal in Developer Sandbox mode.
     """
     if is_smtp_configured():
-        from_email = Config.SMTP_FROM_EMAIL if (Config.SMTP_FROM_EMAIL and Config.SMTP_FROM_EMAIL != 'no-reply@scoretracker.io') else (Config.SMTP_USER or 'no-reply@scoretracker.io')
+        from_email = Config.SMTP_FROM_EMAIL or Config.SMTP_USER or 'scoretraccker@gmail.com'
         from_header = f"ScoreTracker Portal <{from_email}>"
 
         msg = MIMEMultipart('alternative')
